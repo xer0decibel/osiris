@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { rankLocalFirst, describeServiceFailure } from '@/lib/arcgis-rank';
 
 /**
  * OSIRIS — ArcGIS Public Data Integration
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
       }));
 
       return NextResponse.json(
-        { results },
+        { results: rankLocalFirst(results, Boolean(bbox)) },
         {
           headers: {
             'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300',
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
 
       if (!res.ok) {
         return NextResponse.json(
-          { error: `Feature Service query failed (${res.status})` },
+          { error: describeServiceFailure(res.status) },
           { status: res.status },
         );
       }
@@ -137,7 +138,7 @@ export async function GET(request: NextRequest) {
 
       if (geojson.error) {
         return NextResponse.json(
-          { error: geojson.error.message || 'Feature Service error' },
+          { error: describeServiceFailure(res.status, geojson.error.code, geojson.error.message) },
           { status: 502 },
         );
       }
