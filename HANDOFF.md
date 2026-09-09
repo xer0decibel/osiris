@@ -12,7 +12,7 @@ with no network, and started packaging it as a bootable drive.
 situational-awareness map. MIT licensed. Upstream is *active* (commits most
 days), so this diverges further every day it sits.
 
-**State:** 10 commits on branch `feat/intel-layers`, **nothing pushed anywhere**.
+**State:** 55 commits on branch `feat/intel-layers` across two sessions, **nothing pushed anywhere**.
 `origin` is upstream's repo and is not writable by us. Committer identity is set
 repo-locally to `xer0decibel <xer0decibel@protonmail.com>`.
 
@@ -86,6 +86,13 @@ now opens where you are rather than in central Bulgaria.
 | Library updater | `tools/update-kit.mjs` | verified, resumable, never deletes before it swaps |
 | Drive landing page | `usb/START-HERE.html` | one file, no build, works over `file://` |
 | Packaging list | `docs/USB-APPLIANCE.md` | measured sizes, three builds, the three usage modes |
+| Map glyphs | `OsirisMap.tsx`, `createGlyph` | Cameras, fire detections, named incidents, radio and TV draw lucide glyphs rasterised at 2x with a dark outline, sized by zoom; TV at 1.5x, cyan; flames stepped by FRP or containment. Every point still drawn |
+| Cursor clock | header, `lib/local-time.ts` | Wall-clock time under the cursor, offline via tz-lookup + Intl; American zone names, GMT offsets elsewhere; ticks every second |
+| Traffic, key banked | `/api/traffic`, `TOMTOM_API_KEY` | TomTom flow tiles proxied so the key stays server-side; layer appears only with a key; free tier 2,500 tiles/day, non-commercial. No keyless traffic exists anywhere — the data is a fleet of phones |
+| Property links | region dossier, `lib/listings.ts` | Zillow rent and sale on the right-clicked spot by bounds (confirmed by the operator); Redfin by ZIP; LoopNet as city-st-zip with map view (confirmed). No listings source is free, keyless and allowed, so links, not a layer. The dossier now geocodes at street level for town, county, ZIP and state code |
+| Coordinate links | popups, `coordLink` | The attack popup's source origin and every COORDS readout fly the map there, through a window hook the flight popup already used; numbers parsed and re-printed, never raw |
+| Radio compact, TV PiP | `RadioPlayer.tsx`, `TvViewer.tsx` | A minimise button folds the player to one row; the TV window hides, not unmounts, while the stream is in picture-in-picture |
+| Interface switches | Style Studio, `style-tokens.ts` | Bottom ticker on/off beside the pan/zoom pad; logo at half size, 12px in; tagline gone; upstream's token badge removed; Next's dev button off |
 | Property lines | ArcGIS window, "Property Lines" quick-pick | There is no national parcel layer, free or paid; counties publish their own. The pick searches parcels *and taxlots* (Oregon's word; "parcels" alone never found Multnomah County) against the current view, ranks by how much of the view a layer covers, and imports the county's service. Capped at 2,000 features a view, and the window says so, so use a neighbourhood zoom. Measured: King County gives 703 polygons with addresses for a few downtown blocks; Multnomah gives 74 lots with owners for one street |
 | Topographic basemap | MAP/SAT/TOPO toggle on the rail | Esri World Topo tiles, same service and terms as the imagery, keyless. The basemap effect now honours the URL it is given instead of hard-coding the imagery |
 | Surface Temperature | `wx_temp`, `/api/temperature`, `lib/isotherms.ts` | Not tiles: a 24×16 grid of current 2 m readings from Open-Meteo for the padded view (one keyless request, ~1s, cached 10 min per rounded view), upsampled and contoured on the client into isotherm bands every 2°C with labelled lines, plus a legend in C and F. Within the US the field is nudged toward NOAA station readings (`/api/temperature/stations`, `lib/nws-stations.ts`, `lib/temperature-blend.ts`: inverse-distance residuals, fading at 0.8°), and the stations are drawn as labelled dots so model and thermometer can be compared. The AIRS tile layer it replaced was raw swaths and splotchy. Open-Meteo is CC BY 4.0, non-commercial free tier — feed audit |
@@ -194,6 +201,31 @@ The useful half of this document.
   paused because the pane was not being drawn. Measure with a temporary
   `* { transition: none !important }` in the page, then remove it.
 
+- **A pipeline hid a failed patch from the commit gate, twice.** `node patch.mjs`
+  `| tail` reports tail's exit code, and `vitest | grep` reports grep's. One
+  commit landed with a syntax error, one with only half its files; both were
+  caught within the minute and amended, because they were unpushed and
+  minutes old. The chain now captures each step's own exit code into a
+  variable and commits only when typecheck, tests and lint all pass.
+
+- **The shell's working directory drifts back a level between calls.** A
+  patch ran against `Claude_local/src/...`, found nothing, and the new files
+  it was meant to wire had already landed — a minute of compile error in the
+  operator's tab. Every chain now begins with an explicit `cd` into the repo.
+
+- **A lint gate that demands equality refuses improvements.** Using an icon
+  that had been an unused import dropped a file's count by one and the gate
+  said no. Upstream files carry dozens of findings that are not ours; the
+  gate is "no worse than the committed version", per file, not zero.
+
+- **A guard regex matched a comment.** `\btemperature,` found
+  "brightness-temperature," in a doc comment and refused a correct patch
+  three times. Guards for a code token should anchor to the line.
+
+- **A test asked the blend to do the wrong thing.** At a thermometer's own
+  cell the thermometer should win; the test demanded it be outvoted there.
+  Outvoting is a between-stations property, and the test now samples between.
+
 - **A second `next dev` in the same directory refuses to start** while another
   session's is running, on any port. The pane can simply navigate to the running
   one on :3000 — it serves the same working tree, hot reload included — despite a
@@ -204,7 +236,8 @@ The useful half of this document.
 ## Open threads
 
 - **The window refactor was verified by typecheck, lint and the suite, not by
-  eye.** Fifteen panels moved onto `FloatingWindow` in one sitting while the
+  eye — except the ArcGIS window, which the operator has since used and
+  screenshotted, and it renders as designed.** Fifteen panels moved onto `FloatingWindow` in one sitting while the
   preview pane was collapsed, so none of them has been looked at since. What
   to check first: each window's drag and ✕; the collapsed-header controls that
   became window actions (Recon's full screen, Markets' and Alerts' maximise,
@@ -235,7 +268,13 @@ The useful half of this document.
   much better odds than one 2,585-line PR of seven features.
 - **Free API keys are unclaimed.** OpenSky (flights refresh 900s → 90s) and
   Cloudflare Radar (unlocks two layers currently hidden) are the two worth
-  having. `N2YO_API_KEY`, `FIRMS_API_KEY` and `OSIRIS_TELEGRAM_CHANNELS` appear
+  having. Two more are banked by the operator's choice: TomTom for traffic
+  (wired, dormant), and WSDOT's Highway Cameras access code — the old
+  `data.wsdot.wa.gov/log/public/cameras.json` feed the camera route uses
+  answers 404, so Washington State has no cameras of its own until the
+  route is pointed at the keyed API (measured; the 558 "Washington" cameras
+  are BC and Oregon spillover). RentCast would make rentals a layer instead
+  of a link, 50 free calls a month. `N2YO_API_KEY`, `FIRMS_API_KEY` and `OSIRIS_TELEGRAM_CHANNELS` appear
   only in docs — no route reads them, signing up buys nothing.
 - **Bootable USB appliance.** Live Linux + Kiwix + this dashboard. The offline
   basemap is step one. Packaging list with measured sizes:
@@ -246,17 +285,27 @@ The useful half of this document.
   selling this. The *data* is the exposure: 687 SkylineWebcams references,
   96 YouTube, OpenSky's explicitly non-commercial licence, Esri and CARTO terms,
   and iptv-org's unauthorised rebroadcasts. The government feeds — NASA, USGS,
-  NOAA, NIFC — are the clean ones.
+  NOAA, NIFC — are the clean ones. Added today: Open-Meteo (the temperature
+  field) is CC BY 4.0 with a non-commercial free tier; the NWS station
+  readings are public domain; Esri's topo tiles are under the same terms as
+  the imagery already used; the property sites are links out, not data; and
+  the Pluto relay works around Pluto's allow-list, personal use only.
 
 ---
 
-## Current state (end of session 2, 2026-09-09)
+## Current state (end of session 2, 2026-09-09, evening)
 
-**655 tests pass**, typecheck clean, lint clean on every file added here.
-`page.tsx` carries 95 lint findings that are upstream's; the count is unchanged
-by anything done here, which is the check to repeat after touching it. Working
-tree clean, 21 commits on `feat/intel-layers`, nothing pushed. `npm run dev` on
-:3000.
+**714 tests pass**, typecheck clean, lint clean on every file added here, and
+**no worse** on every upstream file touched: `page.tsx` 94, `OsirisMap.tsx`
+147, `LayerPanel.tsx` 8 (down from 9), `ArcGISPanel.tsx` 6 — the check to
+repeat after touching any of them. Working tree clean, 55 commits on
+`feat/intel-layers`, nothing pushed. `npm run dev` on :3000.
+
+The commit chain that worked, for the next session to copy: `cd` into the
+repo first; run the patch script and capture its exit code directly, not
+through a pipe; typecheck; lint each touched file against `git show HEAD:`
+written to a real file (`--stdin` under-reports); run the suite; commit only
+if all pass, with a lint gate of "no worse", per file.
 
 `.claude/launch.json` is untracked on purpose: it is the desktop app's dev-server
 config for the Browser pane, not part of the project.
