@@ -29,7 +29,7 @@ import LiveAlerts from '@/components/LiveAlerts';
 import WorldRemote from '@/components/WorldRemote';
 import ArcGISPanel from '@/components/ArcGISPanel';
 import NearbyLayers from '@/components/NearbyLayers';
-import { NEARBY_QUERY, NEARBY_SETTLE_MS, bboxParam, pickNearby, type NearbyResult } from '@/lib/arcgis-nearby';
+import { NEARBY_CATEGORIES, NEARBY_SETTLE_MS, bboxParam, pickNearby, type NearbyResult } from '@/lib/arcgis-nearby';
 import FloatingWindow, { windowButtonClass, windowIconClass } from '@/components/FloatingWindow';
 const OsirisMap = dynamic(() => import('@/components/OsirisMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
@@ -259,10 +259,16 @@ export default function Dashboard() {
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/arcgis?q=${encodeURIComponent(NEARBY_QUERY)}&bbox=${nearbyKey}`);
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        if (!cancelled) setNearby(pickNearby((data.results ?? []) as NearbyResult[], arcgisLayers.map(l => l.id)));
+        // One search per subject, in parallel; a subject that fails just contributes nothing.
+        const perSubject = await Promise.all(NEARBY_CATEGORIES.map(async c => {
+          try {
+            const res = await fetch(`/api/arcgis?q=${encodeURIComponent(c.query)}&bbox=${nearbyKey}`);
+            if (!res.ok) return [] as NearbyResult[];
+            const data = await res.json();
+            return ((data.results ?? []) as Omit<NearbyResult, 'category'>[]).map(r => ({ ...r, category: c.label }));
+          } catch { return [] as NearbyResult[]; }
+        }));
+        if (!cancelled) setNearby(pickNearby(perSubject.flat(), arcgisLayers.map(l => l.id)));
       } catch { /* the strip keeps what it had */ }
     }, NEARBY_SETTLE_MS);
     return () => { cancelled = true; clearTimeout(t); };

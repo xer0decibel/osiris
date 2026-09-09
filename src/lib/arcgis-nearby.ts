@@ -1,22 +1,35 @@
 /**
  * OSIRIS — auto find: the layers ArcGIS Online has for wherever the map is.
  *
- * One broad search, scoped to the view and ranked by coverage like any other,
- * so the county's own layers rise and the nation-wide products sink. The
- * query is the union of what the window's quick-picks ask for — property
- * lines under both names, pipelines, the grid, infrastructure, military,
- * emergency — plus flood and zoning, which are the two things people look up
- * about a place they have just found on a map. Measured over Multnomah
- * County: the two taxlot layers lead, a tsunami study and a pipeline layer
- * follow, Regrid's paid product sits seventh.
+ * One search per subject, each scoped to the view and ranked by coverage like
+ * any other, so the county's own layers rise and the nation-wide products
+ * sink. One broad query was tried first and the local taxlot layers crowded
+ * everything else out of six slots; per subject, pipelines and the grid get
+ * their own turn. The subjects are the ArcGIS window's quick-picks, which live
+ * here so the window and the strip cannot drift apart.
  */
-export const NEARBY_QUERY =
-  'parcels OR taxlots OR "tax lots" OR pipeline OR "power grid" OR transmission OR "critical infrastructure" OR military OR emergency OR evacuation OR flood OR zoning';
+export interface NearbyCategory { label: string; query: string }
 
-/** How many suggestions the strip shows. Enough to be useful, few enough to glance at. */
-export const NEARBY_LIMIT = 6;
+/* Property lines lead: there is no national parcel layer anywhere, free or
+   paid, but most counties publish their own, and searching against the current
+   view finds the local one. The query asks for both names the layers go by —
+   Washington says parcels, Oregon says taxlots, and "parcels" alone never found
+   Multnomah County's layer. Measured over both: King County gives addresses and
+   parcel numbers, Multnomah gives owners. Imports are capped at 2,000 features
+   per view, so parcels want a neighbourhood zoom, not a county. */
+export const NEARBY_CATEGORIES: readonly NearbyCategory[] = [
+  { label: 'Property Lines', query: 'parcels OR taxlots OR "tax lots"' },
+  { label: 'Pipelines', query: 'pipeline' },
+  { label: 'Power Grid', query: 'power grid transmission' },
+  { label: 'Infrastructure', query: 'critical infrastructure' },
+  { label: 'Military', query: 'military base installation' },
+  { label: 'Emergency', query: 'emergency shelter evacuation' },
+] as const;
 
-/** How long the map has to sit still before a search is spent on the view. */
+/** How many suggestions the strip shows per subject. */
+export const NEARBY_PER_CATEGORY = 2;
+
+/** How long the map has to sit still before searches are spent on the view. */
 export const NEARBY_SETTLE_MS = 1200;
 
 export interface Bounds { west: number; south: number; east: number; north: number }
@@ -32,10 +45,27 @@ export interface NearbyResult {
   url: string;
   owner: string;
   numViews: number;
+  /** The subject whose search found it. */
+  category: string;
 }
 
-/** Drop what is already on the map, and cap the list. */
-export function pickNearby<T extends { id: string }>(results: T[], importedIds: Iterable<string>, limit = NEARBY_LIMIT): T[] {
+/**
+ * Keep the first few of each subject, skip what is already on the map, and
+ * never list the same layer under two subjects.
+ */
+export function pickNearby<T extends { id: string; category: string }>(
+  results: T[], importedIds: Iterable<string>, perCategory = NEARBY_PER_CATEGORY,
+): T[] {
   const have = new Set(importedIds);
-  return results.filter(r => !have.has(r.id)).slice(0, limit);
+  const seen = new Set<string>();
+  const count: Record<string, number> = {};
+  const out: T[] = [];
+  for (const r of results) {
+    if (have.has(r.id) || seen.has(r.id)) continue;
+    if ((count[r.category] ?? 0) >= perCategory) continue;
+    seen.add(r.id);
+    count[r.category] = (count[r.category] ?? 0) + 1;
+    out.push(r);
+  }
+  return out;
 }

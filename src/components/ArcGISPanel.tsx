@@ -24,6 +24,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { describeImport } from '@/lib/arcgis-rank';
+import { NEARBY_CATEGORIES } from '@/lib/arcgis-nearby';
 
 /* ═══════════════════════════════════════════════════════════════
    ArcGIS Search & Import Panel — OSIRIS OSINT Dashboard
@@ -62,21 +63,8 @@ export interface ArcGISPanelProps {
   onAutoFind?: (on: boolean) => void;
 }
 
-/* Property lines lead: there is no national parcel layer anywhere, free or
-   paid, but most counties publish their own, and searching against the current
-   view finds the local one. The query asks for both names the layers go by —
-   Washington says parcels, Oregon says taxlots, and "parcels" alone never found
-   Multnomah County's layer. Measured over both: King County gives addresses and
-   parcel numbers, Multnomah gives owners. Imports are capped at 2,000 features
-   per view, so parcels want a neighbourhood zoom, not a county. */
-const CATEGORIES = [
-  { label: 'Property Lines', query: 'parcels OR taxlots OR "tax lots"' },
-  { label: 'Pipelines', query: 'pipeline' },
-  { label: 'Power Grid', query: 'power grid transmission' },
-  { label: 'Infrastructure', query: 'critical infrastructure' },
-  { label: 'Military', query: 'military base installation' },
-  { label: 'Emergency', query: 'emergency shelter evacuation' },
-] as const;
+/* The quick-picks are the same list auto find searches — see lib/arcgis-nearby. */
+const CATEGORIES = NEARBY_CATEGORIES;
 
 const LAYER_COLORS = [
   '#D4AF37', // Gold (default)
