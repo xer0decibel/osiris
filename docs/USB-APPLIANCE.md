@@ -240,14 +240,66 @@ functions identically in all three modes, with nothing installed and nothing
 running. It should be a plain file with relative links — no build step, no
 JavaScript that matters, no server.
 
+## Keeping it current
+
+Three different things go stale at three different rates, and they want three
+different answers.
+
+### The live layers — already handled
+Fires, flights, weather, radio, TV, maritime, quakes. Every one polls whenever
+there is a connection. Nothing to build, nothing to schedule, nothing to
+configure. Plug in a network and they fill in.
+
+### The library — `tools/update-kit.mjs`
+Kiwix rebuilds its archives roughly monthly and puts the build date in the
+filename, so spotting a stale one is string comparison.
+
+```
+node tools/update-kit.mjs --library /path/to/zim            # report only
+node tools/update-kit.mjs --library /path/to/zim --update   # fetch them
+```
+
+Built around one rule: **the drive must never be less capable after an update
+than before it.** Everything else follows.
+
+- Downloads to `.partial`, verifies the published SHA-256, and only then swaps
+  it in. The old archive is not deleted until the new one is on disk and
+  correct. Delete first, and a transfer that dies at 80% leaves a survival drive
+  with no encyclopedia — the worst outcome this thing has.
+- Refuses when free space is short, rather than stranding it half done. Holding
+  both copies briefly is the price of never holding neither.
+- Reports by default; downloads only when asked, and anything over 2GB needs an
+  explicit `--yes`. A 49GB transfer started unattended on a tethered phone is
+  not a favour.
+- Resumes rather than restarts — the mirror supports Range, so a link that drops
+  at 40GB does not mean starting again.
+- Skips any archive with no published checksum, because an unverified archive is
+  not an upgrade.
+
+This was tested against the real mirror, including the failure path: a
+deliberately corrupted resume was caught by the checksum, the partial was
+discarded, and the existing archive survived untouched.
+
+On the appliance, schedule the **check** and leave the download to a person —
+a systemd timer running without `--update`, surfacing a notice. Automatic
+checking is helpful; automatic multi-gigabyte downloading is not.
+
+### The OS and the application — deliberately manual
+Neither is touched by that script, and neither should be updated unattended on a
+device you may be depending on. An automatic `git pull` and rebuild can turn a
+working drive into a brick, and you would not find out until the moment you
+needed it. Update those on a desk, verify the thing still boots and still
+renders, and re-image.
+
 ## Honest problems
 
 - **The two halves do not reinforce each other.** Offline you have a library and
   a map with no markers. Online you have a live picture. There is no state where
   both halves are pulling their weight at once, and the pitch should not pretend
   otherwise.
-- **The library goes stale.** A ZIM is a snapshot. A drive cut today is a
-  snapshot of today, forever, unless someone re-images it.
+- **The library goes stale** — though `update-kit` now answers this wherever
+  there is a connection and enough free space. With neither, a ZIM is a snapshot
+  of the day the drive was cut, forever.
 - **Commercial distribution is a data problem, not a licence problem.** MIT
   covers the code. It does not cover 687 SkylineWebcams streams, OpenSky's
   explicitly non-commercial feed, Esri imagery, or iptv-org's unauthorised
