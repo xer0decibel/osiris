@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSIRIS Field Kit — Start Here</title>
+<!--
+  Deliberately one file, with nothing loaded from anywhere.
+
+  This page is the only thing on the drive that works identically whether you
+  booted it, plugged it into a running laptop, or plugged it into a phone. So it
+  has no build step, no external stylesheet, no web font, no framework, and no
+  JavaScript that anything depends on. Opened by double-click over file://, with
+  no network and no server, it must still be completely usable.
+
+  Every link is relative. Do not introduce an absolute path: it will work on the
+  machine you tested and nowhere else.
+-->
+<style>
+  :root {
+    --bg: #0b0e11;
+    --panel: #12161a;
+    --line: #222a31;
+    --ink: #dfe4e8;
+    --dim: #8b98a4;
+    --gold: #d8a13a;
+    --live: #35c9a0;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    padding: 1.25rem 1rem 4rem;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.6 ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 1rem; margin-bottom: 1.5rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; letter-spacing: .04em; }
+  .sub { color: var(--dim); font-size: .9rem; margin: 0; }
+  h2 {
+    font-size: .78rem; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--gold); margin: 2.25rem 0 .75rem; font-weight: 700;
+  }
+  a { color: var(--ink); }
+  .card {
+    display: block; padding: .85rem 1rem; margin-bottom: .5rem;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    text-decoration: none; color: var(--ink);
+  }
+  .card:active { border-color: var(--gold); }
+  .card b { display: block; font-size: 1rem; margin-bottom: .15rem; }
+  .card span { display: block; color: var(--dim); font-size: .85rem; line-height: 1.45; }
+  .grid { display: grid; gap: .5rem; }
+  @media (min-width: 34rem) { .grid.two { grid-template-columns: 1fr 1fr; } }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .85rem;
+  }
+  pre {
+    background: #090c0f; border: 1px solid var(--line); border-radius: 6px;
+    padding: .7rem .8rem; overflow-x: auto; margin: .4rem 0 0; color: var(--live);
+  }
+  .note {
+    border-left: 2px solid var(--gold); padding: .1rem 0 .1rem .85rem;
+    color: var(--dim); font-size: .88rem; margin: .9rem 0;
+  }
+  footer {
+    margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
+    color: var(--dim); font-size: .8rem;
+  }
+  /* .card span sets display:block for the descriptions, and the pill sits
+     inside a card too — without the extra specificity it stretches full width. */
+  .card .tag, .tag {
+    display: inline-block; font-size: .68rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--gold);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: .1rem .5rem; margin-left: .4rem; vertical-align: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>OSIRIS FIELD KIT</h1>
+  <p class="sub">Offline reference library, and a live intelligence map when there is a connection.</p>
+</header>
+
+<!--
+  Ordered by how the reader most likely arrived. Someone on a phone in a hurry
+  gets the reference material first; the dashboard, which needs a computer and a
+  network, comes last.
+-->
+
+<h2>Read now — works on anything</h2>
+<div class="grid">
+  <a class="card" href="docs/index.html">
+    <b>Field references <span class="tag">HTML</span></b>
+    <span>First aid, water, shelter, signalling, repair. Reflows to fit a phone screen — start here rather than the PDFs.</span>
+  </a>
+  <a class="card" href="docs/pdf/">
+    <b>Same references <span class="tag">PDF</span></b>
+    <span>Archival originals, including the field manuals. Page layout is fixed, so they read poorly on a small screen — use these on a laptop or to print.</span>
+  </a>
+</div>
+
+<h2>The full library</h2>
+<div class="grid">
+  <a class="card" href="zim/">
+    <b>Wikipedia and reference archives</b>
+    <span>Encyclopedia, medical, repair and appropriate-technology archives in <code>.zim</code> format. These need a reader — see below.</span>
+  </a>
+  <a class="card" href="http://localhost:8080/">
+    <b>Open the library <span class="tag">if Kiwix is running</span></b>
+    <span>Works once <code>kiwix-serve</code> is started, or on the booted drive where it starts by itself. Dead link otherwise — that is expected.</span>
+  </a>
+</div>
+
+<div class="note">
+  <strong>On a phone?</strong> Install <b>Kiwix</b> from the App Store or Play Store,
+  then open the <code>.zim</code> files from this drive inside it. Do this before you
+  need it — the drive cannot install anything, and neither can this page.
+</div>
+
+<h2>The live map</h2>
+<a class="card" href="http://localhost:3000/">
+  <b>OSIRIS dashboard <span class="tag">needs a computer</span></b>
+  <span>Aviation, maritime, fires, weather radar, CCTV, radio and TV. The map works with no connection; the layers fill in when there is one.</span>
+</a>
+
+<p class="sub" style="margin:.9rem 0 .35rem;">If it is not already running, start it from this drive — nothing is installed, and nothing is written to the host:</p>
+
+<div id="cmd-win">
+  <pre>portable\windows\node.exe osiris\server.js</pre>
+</div>
+<div id="cmd-nix">
+  <pre>./portable/linux/node osiris/server.js</pre>
+</div>
+<div id="cmd-mac">
+  <pre>./portable/macos/node osiris/server.js</pre>
+</div>
+<div id="cmd-phone" hidden>
+  <div class="note" style="margin-top:0;">
+    A phone can read everything above, but it cannot run the dashboard — there is
+    no way to run a server from a drive on iOS or Android. Plug this into a
+    computer for the live map.
+  </div>
+</div>
+<p class="sub" style="margin-top:.5rem;">Then open <a href="http://localhost:3000/">localhost:3000</a>.</p>
+
+<div class="note">
+  This drive is pinned to its offline basemap, so it never reaches for a map
+  server it cannot get to. Everything else fills in on its own once you have a
+  connection — there is nothing to switch.
+</div>
+
+<h2>Boot from this drive</h2>
+<p class="sub">
+  For a machine that is switched off, is not yours, or that you would rather not
+  trust. Restart it, open the boot menu — usually <b>F12</b>, <b>F11</b>,
+  <b>ESC</b> or <b>DEL</b> during startup, and <b>Option</b> on a Mac — and pick
+  this drive. Nothing is written to the computer's own disk.
+</p>
+
+<footer>
+  Wikipedia and reference archives via Kiwix (openZIM). Basemap from Natural
+  Earth, public domain. Fire, weather and hazard data from NASA, NOAA, USGS and
+  NIFC. <br>
+  Nothing on this page loads from the internet, so it works exactly the same on a
+  dead network.
+</footer>
+
+</div>
+
+<script>
+/*
+  Progressive enhancement, and nothing more: it hides the two command lines that
+  do not apply to the machine you are on. With JavaScript off, or on a browser
+  that reports nothing useful, all three stay visible and the page is still
+  entirely usable — which is the rule for everything on this drive.
+*/
+(function () {
+  var ALL = ['cmd-win', 'cmd-nix', 'cmd-mac'];
+  function show(keep) {
+    ALL.concat('cmd-phone').forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.hidden = id !== keep;
+    });
+  }
+  try {
+    var p = (navigator.userAgentData && navigator.userAgentData.platform) ||
+            navigator.platform || '';
+    var ua = navigator.userAgent || '';
+    var both = p + ' ' + ua;
+
+    /* Phones first, and on the combined platform *and* user-agent string.
+       Chrome reports userAgentData.platform as "Android", which matches none of
+       the desktop tests and used to fall through to showing all three — three
+       commands a phone has no way to run. */
+    if (/Android|iPhone|iPad|iPod/i.test(both)) return show('cmd-phone');
+
+    if (/Win/i.test(p)) return show('cmd-win');
+    if (/Mac/i.test(p)) return show('cmd-mac');
+    if (/Linux|X11|CrOS/i.test(p)) return show('cmd-nix');
+    /* Unrecognised: leave all three up. Better to show one command too many
+       than to hide the only one that would have worked. */
+  } catch (e) { /* same fallback — everything stays visible */ }
+})();
+</script>
+</body>
+</html>

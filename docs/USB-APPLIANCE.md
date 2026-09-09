@@ -127,8 +127,10 @@ Roughly in order of how much thinking each needs:
    `OSIRIS_BASEMAP=offline` in the image's environment. Read on every request, so
    the same image flips without rebuilding; a human can still override per-tab
    with `?basemap=online`.
-2. **A landing page.** Booting to a browser with two bookmarks is not a product.
-   One page: dashboard, library, status, and an honest "no connection" state.
+2. ~~A landing page.~~ **Done** — `usb/START-HERE.html`. One self-contained file,
+   no build step, no external anything; works over `file://` on a dead network.
+   It adapts to where it is opened: one run command on a desktop, and on a phone
+   a note that the dashboard cannot run there at all.
 3. **Connectivity awareness in the UI.** Right now offline layers just sit
    empty. The appliance should say *why* — "no connection, 6 layers waiting" —
    rather than looking broken.
@@ -215,6 +217,23 @@ Suggested layout:
   Persistence partition (ext4)
     live-boot writes here
 ```
+
+### Why it cannot open itself
+
+Autorun from removable media is dead, deliberately. Windows disabled it for USB
+drives in 2011 — an `autorun.inf` on a stick will not launch anything. macOS
+never had it, and neither iOS nor Android will run anything from a drive. This is
+not an oversight to work around: autorun-from-USB was among the most effective
+malware vectors ever built, and is how Stuxnet spread.
+
+So the drive gets exactly one shot at being obvious, and it is spent on:
+
+- **`START-HERE.html` at the root**, where it cannot be missed
+- **a volume label** — `OSIRIS-KIT` — so the drive announces itself in the file
+  manager before anything is opened
+
+The booted image is the exception. There you own the session, so the browser can
+open the page on login.
 
 `START-HERE.html` is doing real work in that list: it is the only thing that
 functions identically in all three modes, with nothing installed and nothing
