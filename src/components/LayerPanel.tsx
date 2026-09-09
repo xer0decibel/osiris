@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plane, Satellite, Sun, AlertTriangle, Camera,
   CloudLightning, Ship, Network, Database, Ghost,
-  Flame, Tv, Radio, Mountain, Anchor, Megaphone, SlidersHorizontal, CloudRain
+  Flame, Tv, Radio, Mountain, Anchor, Megaphone, SlidersHorizontal, CloudRain,
+  Globe, MapPinned, Moon
 } from 'lucide-react';
 import StyleStudio from './StyleStudio';
 import { TERRAIN_MIN_ZOOM, type TerrainStatus } from '@/lib/map-terrain';
@@ -24,6 +25,54 @@ interface LayerPanelProps {
   onTerrainRetry?: () => void;
   onTerrainFocus?: () => void;
   on3DModeSelected?: () => void;
+  /** The map's projection and imagery, shown at the top of the rail as two
+   *  toggles. Each shows the state the map is in and switches to the other.
+   *  Omitted, the rail simply starts at the layer groups. */
+  mapProjection?: 'globe' | 'mercator';
+  onToggleProjection?: () => void;
+  mapStyle?: 'dark' | 'satellite';
+  onToggleStyle?: () => void;
+}
+
+/**
+ * One button for a two-state setting. It shows the state the map is in and
+ * switches to the other — two of these replaced a four-segment strip, where a
+ * segment for each state said the same thing twice.
+ */
+function ViewToggle({ icon: Icon, label, title, onClick, wide }: {
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  label: string;
+  title: string;
+  onClick: () => void;
+  /** Mobile: a full-width pill in a row, not a rail tile. */
+  wide?: boolean;
+}) {
+  if (wide) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={title}
+        aria-label={title}
+        className="flex-1 flex items-center justify-center gap-2 py-2 rounded-md border border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06] transition-colors text-[10px] font-mono tracking-[0.18em] text-white/70"
+      >
+        <Icon className="w-3.5 h-3.5" />
+        {label}
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="w-10 h-10 flex flex-col items-center justify-center gap-[3px] rounded-lg transition-colors hover:bg-white/[0.05] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+    >
+      <Icon style={{ width: 15, height: 15, color: 'rgba(255,255,255,0.75)' }} />
+      <span className="text-[8px] font-mono tracking-[0.15em] leading-none text-white/45">{label}</span>
+    </button>
+  );
 }
 
 interface LayerDef {
@@ -224,8 +273,31 @@ function SubLayerStem() {
   );
 }
 
-function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'core', setTheme, capabilities = {}, terrainStatus = 'idle', onTerrainRetry, onTerrainFocus, on3DModeSelected }: LayerPanelProps) {
+function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'core', setTheme, capabilities = {}, terrainStatus = 'idle', onTerrainRetry, onTerrainFocus, on3DModeSelected, mapProjection, onToggleProjection, mapStyle, onToggleStyle }: LayerPanelProps) {
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
+
+  const viewToggles = (mapProjection && onToggleProjection) || (mapStyle && onToggleStyle) ? (
+    <>
+      {mapProjection && onToggleProjection && (
+        <ViewToggle
+          wide={isMobile}
+          onClick={onToggleProjection}
+          icon={mapProjection === 'globe' ? Globe : MapPinned}
+          label={mapProjection === 'globe' ? '3D' : '2D'}
+          title={mapProjection === 'globe' ? '3D globe — switch to the 2D map' : '2D map — switch to the 3D globe'}
+        />
+      )}
+      {mapStyle && onToggleStyle && (
+        <ViewToggle
+          wide={isMobile}
+          onClick={onToggleStyle}
+          icon={mapStyle === 'dark' ? Moon : Satellite}
+          label={mapStyle === 'dark' ? 'MAP' : 'SAT'}
+          title={mapStyle === 'dark' ? 'Night map — switch to satellite imagery' : 'Satellite imagery — switch to the night map'}
+        />
+      )}
+    </>
+  ) : null;
   /**
    * A pinned group stays open when the pointer leaves. Hover-only flyouts are
    * fine to glance at and impossible to work in — reaching for a toggle at the
@@ -293,6 +365,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
   if (isMobile) {
     return (
       <div className="flex flex-col gap-5 py-2">
+        {viewToggles && <div className="flex gap-2 px-1">{viewToggles}</div>}
         {visibleGroups.map((group) => (
           <div key={group.label} className="flex flex-col gap-2">
             <div className="text-[10px] font-mono tracking-[0.2em] uppercase text-white/30 border-b border-white/[0.06] pb-1.5">
@@ -382,6 +455,13 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
         WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
       }}
     >
+      {/* The two view toggles sit at the top of the rail, above the groups. */}
+      {viewToggles && (
+        <>
+          <div className="flex flex-col items-center gap-1">{viewToggles}</div>
+          <div className="w-5 h-px bg-white/[0.06] my-2" />
+        </>
+      )}
       <div className="flex-1 flex flex-col items-center gap-1">
         {visibleGroups.map((group) => {
           /* Sub-layers modify a parent rather than draw anything of their own,
