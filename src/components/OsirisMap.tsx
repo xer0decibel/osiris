@@ -11,6 +11,7 @@ import { arrivalBeacons } from '@/lib/malware-intel';
 import SatelliteCard, { type SatelliteDetail } from '@/components/SatelliteCard';
 import { tempColorExpression } from '@/lib/isotherms';
 import { imageCorners, type TempImage } from '@/lib/temperature-raster';
+import { paintNight } from '@/lib/day-night';
 import CctvPreviews, { type PreviewCamera } from '@/components/CctvPreviews';
 import MapControls from '@/components/MapControls';
 import LiveNewsPreviews, { type PreviewFeed } from '@/components/LiveNewsPreviews';
@@ -91,26 +92,6 @@ interface OsirisMapProps {
   navigating?: boolean;
   /** Corroborated endpoint airports for watched aircraft, keyed by icao24. */
   aircraftAirports?: Record<string, Array<{ icao: string; iata?: string; city?: string; lat: number; lng: number }>>;
-}
-
-function computeSolarTerminator(): [number, number][] {
-  const now = new Date();
-  const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
-  const declination = -23.44 * Math.cos((2 * Math.PI / 365) * (dayOfYear + 10));
-  const decRad = declination * Math.PI / 180;
-  const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60;
-  const subsolarLng = (12 - utcHours) * 15;
-  const points: [number, number][] = [];
-  for (let lng = -180; lng <= 180; lng += 2) {
-    const lngRad = (lng - subsolarLng) * Math.PI / 180;
-    const lat = Math.atan(-Math.cos(lngRad) / Math.tan(decRad)) * 180 / Math.PI;
-    points.push([lng, lat]);
-  }
-  const darkSide = declination >= 0 ? -90 : 90;
-  points.push([180, darkSide]);
-  points.push([-180, darkSide]);
-  points.push(points[0]);
-  return points;
 }
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
@@ -498,7 +479,10 @@ function OsirisMap({
       map.addLayer({ id: 'wx-station-label', type: 'symbol', source: 'wx-stations', minzoom: 7, layout: {
         'text-field': ['get', 'label'], 'text-size': 10, 'text-font': ['Open Sans Regular'], 'text-offset': [0, 1.1], 'text-anchor': 'top', visibility: 'none',
       }, paint: { 'text-color': '#ffffff', 'text-halo-color': '#000000', 'text-halo-width': 1.2 }});
-      map.addLayer({ id: 'day-night-fill', type: 'fill', source: 'day-night', paint: { 'fill-color': '#000022', 'fill-opacity': 0.35 }});
+      /* The night side as a picture that fades through twilight — lib/day-night.
+         The layer keeps its old id: other layers are inserted relative to it. */
+      map.addSource('day-night-image', { type: 'image', coordinates: [[-180, 85], [180, 85], [180, -85], [-180, -85]] } as maplibregl.ImageSourceSpecification);
+      map.addLayer({ id: 'day-night-fill', type: 'raster', source: 'day-night-image', paint: { 'raster-opacity': 1, 'raster-fade-duration': 0, 'raster-resampling': 'linear' }});
 
       // Earthquakes — amber threat spectrum
       map.addLayer({ id: 'eq-circles', type: 'circle', source: 'earthquakes', paint: {
@@ -1959,13 +1943,13 @@ function OsirisMap({
     if (!mapReady || !mapRef.current) return;
     const map = mapRef.current;
     const update = () => {
-      const src = map.getSource('day-night') as any;
-      if (!src) return;
-      if (!activeLayers.day_night) { src.setData(EMPTY_FC); return; }
-      src.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [computeSolarTerminator()] }, properties: {} }] });
+      const src = map.getSource('day-night-image') as maplibregl.ImageSource | undefined;
+      if (!src || !activeLayers.day_night) return;
+      const img = paintNight(new Date());
+      src.updateImage({ image: new ImageData(img.data, img.width, img.height), coordinates: imageCorners(img.bbox) });
     };
     update();
-    const iv = setInterval(update, 300000); // 5 min (was 1 min — shadow barely moves)
+    const iv = setInterval(update, 60000); // a minute: the terminator moves a quarter degree, and the paint is ~15 ms
     return () => clearInterval(iv);
   }, [mapReady, activeLayers.day_night]);
 
