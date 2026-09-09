@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { expandFires } from '@/lib/fires';
 import { writeHomeView } from '@/lib/homeView';
+import { localTimeAt } from '@/lib/local-time';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, BarChart3, Newspaper, Search, X, Route, Radar, Plane, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, Bluetooth, Pentagon, Radio , PenLine } from 'lucide-react';
@@ -116,6 +117,7 @@ export default function Dashboard() {
   const [globalStats, setGlobalStats] = useState<any>(null);
   const mouseCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const coordsDisplayRef = useRef<HTMLDivElement>(null);
+  const localTimeRef = useRef<HTMLSpanElement>(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [regionDossier, setRegionDossier] = useState<any>(null);
   const [dossierLoading, setDossierLoading] = useState(false);
@@ -306,6 +308,7 @@ export default function Dashboard() {
     gdelt_events: false,
     cf_outages: false,
     cf_attacks: false,
+    traffic: false,
   });
   // Server-side capability flags — gate layers that need credentials.
   const selectFlatMap = () => {
@@ -332,7 +335,8 @@ export default function Dashboard() {
     setActiveLayers(prev => {
       const next: Record<string, boolean> = { ...prev };
       for (const k of keys) {
-        if (k.startsWith('cf_') && !capabilities.cloudflare) continue;
+        const needs = k.startsWith('cf_') ? 'cloudflare' : k === 'traffic' ? 'tomtom' : null;
+        if (needs && !capabilities[needs]) continue;
         next[k] = on;
       }
       return next as typeof prev;
@@ -369,6 +373,10 @@ export default function Dashboard() {
     fetch('/api/cloudflare-radar?probe=1')
       .then(r => (r.ok ? r.json() : null))
       .then(p => { if (p) setCapabilities(c => ({ ...c, cloudflare: !!p.configured })); })
+      .catch(() => { /* leave the layer hidden */ });
+    fetch('/api/traffic?probe=1')
+      .then(r => (r.ok ? r.json() : null))
+      .then(p => { if (p) setCapabilities(c => ({ ...c, tomtom: !!p.configured })); })
       .catch(() => { /* leave the layer hidden */ });
 
     // Once the user interacts, a late IP-location response must not steal the
@@ -458,12 +466,24 @@ export default function Dashboard() {
     return () => { window.removeEventListener('keydown', handler); document.removeEventListener('fullscreenchange', fsHandler); };
   }, []);
 
+  /* The cursor clock ticks with the header clock even while the mouse is
+     still, and is rewritten on every move below. Imperative, like the
+     coordinates: a re-render per mouse move is what "Zero-Render" avoids. */
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const c = mouseCoordsRef.current;
+      if (c && localTimeRef.current) localTimeRef.current.innerText = localTimeAt(c.lat, c.lng)?.label ?? '--:--';
+    }, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
   // Mouse coords + reverse geocode (Zero-Render)
   const handleMouseCoords = useCallback((coords: { lat: number; lng: number }) => {
     mouseCoordsRef.current = coords;
     if (coordsDisplayRef.current) {
       coordsDisplayRef.current.innerText = `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
     }
+    if (localTimeRef.current) localTimeRef.current.innerText = localTimeAt(coords.lat, coords.lng)?.label ?? '--:--';
     if (geocodeTimer.current) clearTimeout(geocodeTimer.current);
     geocodeTimer.current = setTimeout(async () => {
       if (lastGeocodedPos.current) {
@@ -1408,6 +1428,10 @@ export default function Dashboard() {
 
         <span className="hidden lg:inline-flex items-center gap-1.5">
           <ZuluClock />
+        </span>
+
+        <span className="hidden lg:inline-flex items-center gap-1" title="Local time where the cursor is">
+          CURSOR <span ref={localTimeRef} className="text-[var(--gold-primary)] font-bold tabular-nums">--:--</span>
         </span>
 
         <span className="flex items-center gap-1" title="Backend connection status">STATUS: <span className={backendStatus === 'connected' ? 'text-[var(--alert-green)]' : 'text-[var(--alert-red)]'}>{backendStatus === 'connected' ? 'LIVE' : backendStatus.toUpperCase()}</span></span>

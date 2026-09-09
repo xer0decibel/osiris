@@ -2363,6 +2363,26 @@ function OsirisMap({
     apply('wx-radar', weatherTiles?.radar ?? null, 0.75, 512, 7);
   }, [mapReady, weatherTiles]);
 
+  /* Live traffic is a raster like the weather, but on its own effect: the
+     weather effect re-runs every radar frame, and re-setting this source
+     each time would refetch its tiles — and spend the day's quota — for no
+     change. Nothing below zoom 6: a continent of traffic is noise. */
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const id = 'traffic';
+    if (!activeLayers.traffic) {
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
+      return;
+    }
+    if (map.getSource(id)) return;
+    const owned = new Set(['flights','cctv','fires','earthquakes','satellites','maritime','weather']);
+    const before = map.getStyle().layers.find(l => 'source' in l && typeof l.source === 'string' && owned.has(l.source))?.id;
+    map.addSource(id, { type: 'raster', tiles: [`${window.location.origin}/api/traffic/tile/{z}/{x}/{y}`], tileSize: 256, minzoom: 6, maxzoom: 22 });
+    map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': 0.85 } }, before);
+  }, [mapReady, activeLayers.traffic]);
+
   // Named fire incidents → GeoJSON
   useEffect(() => {
     if (!mapReady) return;

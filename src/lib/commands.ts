@@ -54,6 +54,7 @@ const LAYER_TERMS: LayerTerm[] = [
   { key: 'cf_outages', label: 'Internet Outages', words: ['outages', 'internet outages'] },
   { key: 'global_incidents', label: 'Global Incidents', words: ['global incidents', 'conflicts', 'conflict'] },
   { key: 'day_night', label: 'Day / Night Cycle', words: ['day night', 'terminator', 'daylight'] },
+  { key: 'traffic', label: 'Traffic Flow', words: ['traffic', 'congestion', 'traffic flow'] },
   { key: 'terrain_elevation', label: '3D Terrain', words: ['3d terrain', 'terrain', 'elevation', 'mountains'] },
   { key: 'terrain_3d', label: '3D Buildings', words: ['3d buildings', 'buildings'] },
 ];

@@ -219,6 +219,7 @@ const LAYER_GROUPS: LayerGroupDef[] = [
       { key: 'day_night', label: 'Day / Night Cycle', dataKey: '' },
       { key: 'terrain_3d', label: '3D Buildings', description: 'City detail · zoom 14.5+', dataKey: '' },
       { key: 'terrain_elevation', label: '3D Terrain', description: 'Mountains · zoom 10+', dataKey: '' },
+      { key: 'traffic', label: 'Traffic Flow', description: 'TomTom · live congestion · zoom 6+', dataKey: '', requires: 'tomtom' },
     ],
   },
 ];
