@@ -58,7 +58,13 @@ export interface ArcGISPanelProps {
   mapBounds?: { west: number; south: number; east: number; north: number } | null;
 }
 
+/* Property lines lead: there is no national parcel layer anywhere, free or
+   paid, but most counties publish their own, and searching "parcels" against
+   the current view finds the local one — King County's comes with addresses
+   and parcel numbers. Imports are capped at 2,000 features per view, so
+   parcels want a neighbourhood zoom, not a county. */
 const CATEGORIES = [
+  { label: 'Property Lines', query: 'parcels' },
   { label: 'Pipelines', query: 'pipeline' },
   { label: 'Power Grid', query: 'power grid transmission' },
   { label: 'Infrastructure', query: 'critical infrastructure' },
