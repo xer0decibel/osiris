@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import DraggablePanel from './DraggablePanel';
-import { X, Radio, Play, Pause, MapPin, Volume2, VolumeX, ExternalLink, AlertTriangle } from 'lucide-react';
+import { X, Radio, Play, Pause, MapPin, Volume2, VolumeX, ExternalLink, AlertTriangle, Minimize2, Maximize2 } from 'lucide-react';
 
 /** What the map click hands over. A subset of the API's station record: the
  *  fields that survive the trip through GeoJSON feature properties. */
@@ -43,6 +43,10 @@ export default function RadioPlayer({ station, onClose, onLocate }: RadioPlayerP
   const [status, setStatus] = useState<Status>('idle');
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
+  /* Compact: one row — name, status, play, mute — with the meter, slider and
+     tags folded away. A station left playing for an hour should not cost a
+     window; a control strip is enough. */
+  const [compact, setCompact] = useState(false);
 
   /* Keyed on the url rather than the id: swapping the src is what actually
      retunes, and the same broadcaster can appear twice in the index. */
@@ -117,10 +121,12 @@ export default function RadioPlayer({ station, onClose, onLocate }: RadioPlayerP
           }} />
 
           {/* Meta bar */}
-          <div data-drag-handle className="flex items-center justify-between px-3 py-1 border-b border-white/5 text-[9px] font-mono tracking-[0.2em] text-[var(--text-muted)] bg-[var(--hover-accent)] relative z-10">
-            <span className="text-[var(--gold-primary)] font-bold">BROADCAST</span>
-            <span className="truncate ml-3">{station.lat?.toFixed(3)}, {station.lng?.toFixed(3)}</span>
-          </div>
+          {!compact && (
+            <div data-drag-handle className="flex items-center justify-between px-3 py-1 border-b border-white/5 text-[9px] font-mono tracking-[0.2em] text-[var(--text-muted)] bg-[var(--hover-accent)] relative z-10">
+              <span className="text-[var(--gold-primary)] font-bold">BROADCAST</span>
+              <span className="truncate ml-3">{station.lat?.toFixed(3)}, {station.lng?.toFixed(3)}</span>
+            </div>
+          )}
 
           {/* Title */}
           <div data-drag-handle className="flex items-start justify-between px-3 md:px-4 py-2.5 relative z-10 gap-3">
@@ -139,7 +145,9 @@ export default function RadioPlayer({ station, onClose, onLocate }: RadioPlayerP
                   {station.name}
                 </h3>
                 <p className="text-[9px] font-mono text-[var(--gold-primary)] uppercase tracking-wider opacity-80 truncate">
-                  {place || 'LOCATION UNKNOWN'}{quality ? ' • ' + quality : ''}
+                  {compact
+                    ? (status === 'error' ? 'Stream offline' : status === 'buffering' ? 'Acquiring signal' : live ? 'On air' : 'Standby')
+                    : <>{place || 'LOCATION UNKNOWN'}{quality ? ' • ' + quality : ''}</>}
                 </p>
               </div>
             </div>
@@ -164,12 +172,32 @@ export default function RadioPlayer({ station, onClose, onLocate }: RadioPlayerP
                   <ExternalLink className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                 </a>
               )}
+              {compact && (
+                <>
+                  <button onClick={toggle} disabled={status === 'error'} className="p-1.5 hover:bg-white/10 rounded transition-colors disabled:opacity-40" title={live || status === 'buffering' ? 'Stop' : 'Play'}>
+                    {live || status === 'buffering'
+                      ? <Pause className="w-3.5 h-3.5 text-[var(--gold-primary)]" />
+                      : <Play className="w-3.5 h-3.5 text-[var(--gold-primary)]" />}
+                  </button>
+                  <button onClick={() => setMuted(m => !m)} className="p-1.5 hover:bg-white/10 rounded transition-colors" title={muted ? 'Unmute' : 'Mute'}>
+                    {muted || volume === 0
+                      ? <VolumeX className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                      : <Volume2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
+                  </button>
+                </>
+              )}
+              <button onClick={() => setCompact(c => !c)} className="p-1.5 hover:bg-white/10 rounded transition-colors" title={compact ? 'Expand' : 'Minimise'} aria-label={compact ? 'Expand player' : 'Minimise player'}>
+                {compact
+                  ? <Maximize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                  : <Minimize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
+              </button>
               <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded transition-colors" title="Close">
                 <X className="w-3.5 h-3.5 text-[var(--text-muted)]" />
               </button>
             </div>
           </div>
 
+          {!compact && (<>
           {/* Transport */}
           <div className="flex items-center gap-3 px-3 md:px-4 py-3 border-t border-[var(--border-primary)] bg-black/40 relative z-10">
             <button
@@ -260,6 +288,7 @@ export default function RadioPlayer({ station, onClose, onLocate }: RadioPlayerP
               ))}
             </div>
           )}
+          </>)}
 
           <audio
             ref={audioRef}
