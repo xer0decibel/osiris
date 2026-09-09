@@ -98,9 +98,31 @@ describe('offline gazetteer', () => {
     const tokyo = g.find(e => e.name === 'Tokyo');
     expect(kenya).toBeDefined();
     expect(tokyo).toBeDefined();
-    // The ring is closed, so its repeated first vertex must not be averaged in.
-    expect(Math.round(kenya!.lng)).toBe(38);
+    expect(kenya!.lng).toBeCloseTo(38, 6);
+    expect(kenya!.lat).toBeCloseTo(0, 6);
     expect(tokyo!.lat).toBeCloseTo(35.68, 2);
+  });
+
+  it('centres a polygon on its extent, not on wherever the vertices crowd', () => {
+    // The square above, with its east edge drawn as fifty vertices — the shape
+    // of every real coastline in Natural Earth. A vertex average lands on the
+    // beach; the extent centre stays at 38.
+    const east = Array.from({ length: 50 }, (_, i) => [42, -4 + (8 * i) / 49]);
+    const ring = [[34, -4], ...east, [34, 4], [34, -4]];
+    const g = buildGazetteer({ features: [{ properties: { NAME: 'Coastal' }, geometry: { type: 'Polygon', coordinates: [ring] } }] }, null);
+    expect(g[0].lng).toBeCloseTo(38, 6);
+  });
+
+  it('centres a MultiPolygon on its largest piece, not its first', () => {
+    // Chile's first ring is Easter Island. Russia's is a Kuril island. A country
+    // has to be placed on its mainland regardless of Natural Earth's ordering.
+    const island = [[[-109.5, -27.2], [-109.2, -27.2], [-109.2, -27.0], [-109.5, -27.0], [-109.5, -27.2]]];
+    const mainland = [[[-75, -55], [-67, -55], [-67, -17], [-75, -17], [-75, -55]]];
+    const g = buildGazetteer({
+      features: [{ properties: { NAME: 'Chile' }, geometry: { type: 'MultiPolygon', coordinates: [island, mainland] } }],
+    }, null);
+    expect(g[0].lng).toBeCloseTo(-71, 6);
+    expect(g[0].lat).toBeCloseTo(-36, 6);
   });
 
   it('zooms wider for a country than a state, and a state than a city', () => {

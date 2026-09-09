@@ -127,7 +127,33 @@ interface FeatureLike {
   geometry?: { type?: string; coordinates?: unknown } | null;
 }
 
-/** Centroid of the first ring, which is close enough to place a camera. */
+type Bbox = [minX: number, minY: number, maxX: number, maxY: number];
+
+function ringBbox(ring: unknown): Bbox | null {
+  if (!Array.isArray(ring)) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, n = 0;
+  for (const p of ring as unknown[]) {
+    if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue;
+    if (p[0] < minX) minX = p[0];
+    if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minY) minY = p[1];
+    if (p[1] > maxY) maxY = p[1];
+    n++;
+  }
+  return n ? [minX, minY, maxX, maxY] : null;
+}
+
+/**
+ * Somewhere to point a camera, which is a looser question than "the centroid".
+ *
+ * Two things went wrong with averaging vertices, and both were found by looking
+ * up real countries rather than the square test fixture. A MultiPolygon's first
+ * ring is whichever piece Natural Earth listed first — Easter Island for Chile,
+ * Corsica for France, a Kuril island for Russia — so the largest outer ring is
+ * used instead. And a vertex average is pulled toward whichever edge has the
+ * most vertices, which is always the coastline, so Kenya landed on its beach.
+ * The centre of the ring's bounding box has neither problem.
+ */
 function roughCentre(geometry: FeatureLike['geometry']): [number, number] | null {
   const co = geometry?.coordinates as unknown;
   if (!Array.isArray(co)) return null;
@@ -135,27 +161,20 @@ function roughCentre(geometry: FeatureLike['geometry']): [number, number] | null
     const [lng, lat] = co as number[];
     return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
   }
-  let ring: unknown = co;
-  while (Array.isArray(ring) && Array.isArray(ring[0]) && !Number.isFinite((ring[0] as number[])[0])) {
-    ring = ring[0];
+  const outerRings: unknown[] =
+    geometry?.type === 'MultiPolygon' ? (co as unknown[]).map(poly => (Array.isArray(poly) ? poly[0] : null)) :
+    geometry?.type === 'Polygon' ? [co[0]] :
+    [co];
+  let best: Bbox | null = null;
+  let bestArea = -1;
+  for (const ring of outerRings) {
+    const b = ringBbox(ring);
+    if (!b) continue;
+    const area = (b[2] - b[0]) * (b[3] - b[1]);
+    if (area > bestArea) { bestArea = area; best = b; }
   }
-  if (!Array.isArray(ring)) return null;
-  let pts = ring as number[][];
-  /* A GeoJSON ring is closed: the last vertex repeats the first. Averaging it
-     twice drags the centre toward that corner — enough to put a country's label
-     visibly off-centre. */
-  const first = pts[0], last = pts[pts.length - 1];
-  if (
-    pts.length > 2 && Array.isArray(first) && Array.isArray(last) &&
-    first[0] === last[0] && first[1] === last[1]
-  ) {
-    pts = pts.slice(0, -1);
-  }
-  let x = 0, y = 0, n = 0;
-  for (const p of pts) {
-    if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) { x += p[0]; y += p[1]; n++; }
-  }
-  return n ? [x / n, y / n] : null;
+  if (!best) return null;
+  return [(best[0] + best[2]) / 2, (best[1] + best[3]) / 2];
 }
 
 /** Natural Earth is inconsistent about case — NAME on countries, name on the
