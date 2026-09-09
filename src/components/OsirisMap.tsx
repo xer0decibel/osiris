@@ -377,7 +377,7 @@ function OsirisMap({
       // Broadcast radio has no palette token: it is a literal like the fire and
       // quake layers.
       const radioColor = '#E040FB';
-      const tvColor = '#00E5A0';
+      const tvColor = '#00E5FF';
       const flightCom = boot.flightCivil;
       const flightPriv = boot.flightPrivate;
       const flightGov = boot.flightGov;
