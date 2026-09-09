@@ -27,6 +27,13 @@ export const dynamic = 'force-dynamic';
 const RAINVIEWER_INDEX = 'https://api.rainviewer.com/public/weather-maps.json';
 const GIBS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
 const CLOUD_LAYER = 'VIIRS_NOAA20_CorrectedReflectance_TrueColor';
+/* Surface air temperature from AIRS on Aqua — a global daily field, land and
+   sea, which is what reads as a heat map. MODIS land-surface temperature is
+   finer but land-only and holed by cloud. GIBS serves this one to tile zoom
+   6; declared, so the map stretches the last good tile rather than asking
+   for ones that do not exist. Checked against the WMTS capabilities. */
+const TEMP_LAYER = 'AIRS_L2_Surface_Air_Temperature_Day';
+const TEMP_MAX_ZOOM = 6;
 
 /** RainViewer colour scheme 2 (universal blue) with smoothing and snow on. */
 const RADAR_STYLE = '2/1_1';
@@ -67,6 +74,18 @@ export async function GET() {
     url: `${GIBS}/${CLOUD_LAYER}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`,
   };
 
+  /* A day and a half back, not the clouds' twelve hours: AIRS's daily field
+     is composited from swaths through the day, and today's had holes over
+     the Pacific Northwest at midday while yesterday's was complete at every
+     zoom. Measured, tile by tile. */
+  const tempDate = new Date(now - 36 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const temperature = {
+    date: tempDate,
+    layer: TEMP_LAYER,
+    maxzoom: TEMP_MAX_ZOOM,
+    url: `${GIBS}/${TEMP_LAYER}/default/${tempDate}/GoogleMapsCompatible_Level${TEMP_MAX_ZOOM}/{z}/{y}/{x}.png`,
+  };
+
   let frames: RadarFrame[] = [];
   let radarError: string | null = null;
 
@@ -99,6 +118,7 @@ export async function GET() {
   return NextResponse.json({
     radar: { frames, count: frames.length, error: radarError },
     clouds,
+    temperature,
     generated: Math.floor(now / 1000),
   });
 }

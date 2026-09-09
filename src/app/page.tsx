@@ -132,6 +132,7 @@ export default function Dashboard() {
   const [activeTvCountry, setActiveTvCountry] = useState<any>(null);
   const [wxFrames, setWxFrames] = useState<{ time: number; url: string; forecast: boolean }[]>([]);
   const [wxCloudUrl, setWxCloudUrl] = useState<string | null>(null);
+  const [wxTempUrl, setWxTempUrl] = useState<string | null>(null);
   const [wxIndex, setWxIndex] = useState(0);
   const [spaceWeather, setSpaceWeather] = useState<any>(null);
   const [showLayers, setShowLayers] = useState(true);
@@ -300,7 +301,7 @@ export default function Dashboard() {
   const [terrainFocus, setTerrainFocus] = useState(0);
   const [terrainStatus, setTerrainStatus] = useState<TerrainStatus>('idle');
   const [terrainRetry, setTerrainRetry] = useState(0);
-  const [mapStyle, setMapStyle] = useState<'dark'|'satellite'>('dark');
+  const [mapStyle, setMapStyle] = useState<'dark'|'satellite'|'topo'>('dark');
   const [sweepData, setSweepData] = useState<any>(null);
   const [scanTargets, setScanTargets] = useState<any[]>([]);
   const [drawnPolygons, setDrawnPolygons] = useState<DrawnShape[]>([]);
@@ -343,6 +344,7 @@ export default function Dashboard() {
     tv: false,
     wx_radar: false,
     wx_clouds: false,
+    wx_temp: false,
     live_news: true,
     earthquakes: true,
     fires: false,
@@ -376,7 +378,10 @@ export default function Dashboard() {
      switches to the other. Leaving the globe goes through selectFlatMap so the
      terrain, which needs the globe, is switched off with it. */
   const toggleProjection = () => (mapProjection === 'mercator' ? setMapProjection('globe') : selectFlatMap());
-  const toggleMapStyle = () => setMapStyle(s => (s === 'dark' ? 'satellite' : 'dark'));
+  /* Three basemaps in a cycle: the night map, satellite imagery, and a
+     topographic map — the last two from the same Esri tile service, under
+     the same terms, keyless. */
+  const toggleMapStyle = () => setMapStyle(s => (s === 'dark' ? 'satellite' : s === 'satellite' ? 'topo' : 'dark'));
   const terrainPanelProps = {
     terrainStatus,
     on3DModeSelected: () => setMapProjection('globe'),
@@ -909,7 +914,7 @@ export default function Dashboard() {
      switched on rather than fetching once like everything in layerFetchedRef.
      Nothing is fetched at all until one of the two overlays is enabled. */
   useEffect(() => {
-    if (!activeLayers.wx_radar && !activeLayers.wx_clouds) return;
+    if (!activeLayers.wx_radar && !activeLayers.wx_clouds && !activeLayers.wx_temp) return;
     let cancelled = false;
 
     const load = async () => {
@@ -921,6 +926,7 @@ export default function Dashboard() {
         const frames = Array.isArray(d?.radar?.frames) ? d.radar.frames : [];
         setWxFrames(frames);
         setWxCloudUrl(d?.clouds?.url ?? null);
+        setWxTempUrl(d?.temperature?.url ?? null);
         /* Open on the newest observation. On a refresh the whole window has
            shifted forward, so an index left pointing past the end is snapped
            back rather than silently clamping to a frame that no longer exists. */
@@ -933,7 +939,7 @@ export default function Dashboard() {
     load();
     const iv = setInterval(load, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [activeLayers.wx_radar, activeLayers.wx_clouds]);
+  }, [activeLayers.wx_radar, activeLayers.wx_clouds, activeLayers.wx_temp]);
 
   /* Memoised because OsirisMap rebuilds its raster sources whenever this prop's
      identity changes. A fresh object every render would tear the radar down and
@@ -943,7 +949,8 @@ export default function Dashboard() {
       ? (wxFrames[Math.min(wxIndex, wxFrames.length - 1)]?.url ?? null)
       : null,
     clouds: activeLayers.wx_clouds ? wxCloudUrl : null,
-  }), [activeLayers.wx_radar, activeLayers.wx_clouds, wxFrames, wxIndex, wxCloudUrl]);
+    temperature: activeLayers.wx_temp ? wxTempUrl : null,
+  }), [activeLayers.wx_radar, activeLayers.wx_clouds, activeLayers.wx_temp, wxFrames, wxIndex, wxCloudUrl, wxTempUrl]);
 
   /* The radar animates on its own while it is on: thirteen frames over two
      hours, held 550ms each. There is no scrubber — the layer is on or off, and
@@ -1320,7 +1327,7 @@ export default function Dashboard() {
           terrainFocus={terrainFocus}
           terrainRetry={terrainRetry}
           onTerrainStatusChange={setTerrainStatus}
-          mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
+          mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : mapStyle === 'topo' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
           onEntityClick={handleEntityClick} 
           onMouseCoords={handleMouseCoords} 
           onRightClick={handleRightClick} 

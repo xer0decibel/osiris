@@ -30,7 +30,7 @@ interface LayerPanelProps {
    *  Omitted, the rail simply starts at the layer groups. */
   mapProjection?: 'globe' | 'mercator';
   onToggleProjection?: () => void;
-  mapStyle?: 'dark' | 'satellite';
+  mapStyle?: 'dark' | 'satellite' | 'topo';
   onToggleStyle?: () => void;
 }
 
@@ -169,6 +169,7 @@ const LAYER_GROUPS: LayerGroupDef[] = [
     layers: [
       { key: 'wx_radar', label: 'Precipitation Radar', description: 'Animated · last 2 hours', dataKey: '' },
       { key: 'wx_clouds', label: 'Cloud Imagery', description: 'VIIRS true colour · daily', dataKey: '' },
+      { key: 'wx_temp', label: 'Surface Temperature', description: 'AIRS air temperature · daily', dataKey: '' },
     ],
   },
   {
@@ -291,9 +292,9 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilitie
         <ViewToggle
           wide={isMobile}
           onClick={onToggleStyle}
-          icon={mapStyle === 'dark' ? Moon : Satellite}
-          label={mapStyle === 'dark' ? 'MAP' : 'SAT'}
-          title={mapStyle === 'dark' ? 'Night map — switch to satellite imagery' : 'Satellite imagery — switch to the night map'}
+          icon={mapStyle === 'dark' ? Moon : mapStyle === 'satellite' ? Satellite : Mountain}
+          label={mapStyle === 'dark' ? 'MAP' : mapStyle === 'satellite' ? 'SAT' : 'TOPO'}
+          title={mapStyle === 'dark' ? 'Night map — switch to satellite imagery' : mapStyle === 'satellite' ? 'Satellite imagery — switch to the topographic map' : 'Topographic map — switch to the night map'}
         />
       )}
     </>

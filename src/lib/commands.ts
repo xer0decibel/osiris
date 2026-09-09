@@ -36,6 +36,7 @@ const LAYER_TERMS: LayerTerm[] = [
   { key: 'fires', label: 'Active Fires', words: ['fires', 'fire', 'wildfire', 'hotspots', 'burning', 'firms'] },
   { key: 'wx_radar', label: 'Precipitation Radar', words: ['radar', 'precipitation', 'rain', 'storms', 'weather radar'] },
   { key: 'wx_clouds', label: 'Cloud Imagery', words: ['clouds', 'cloud', 'satellite imagery', 'cloud cover'] },
+  { key: 'wx_temp', label: 'Surface Temperature', words: ['temperature', 'heat map', 'heatmap', 'surface temperature', 'temperatures'] },
   { key: 'weather', label: 'Severe Weather', words: ['severe weather', 'cyclone', 'hurricane', 'typhoon'] },
   { key: 'earthquakes', label: 'Earthquakes', words: ['earthquakes', 'earthquake', 'quakes', 'quake', 'seismic'] },
   { key: 'radio', label: 'Radio Stations', words: ['radio stations', 'radio', 'stations', 'broadcast radio'] },

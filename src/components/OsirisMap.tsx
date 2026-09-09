@@ -36,7 +36,7 @@ interface OsirisMapProps {
   activeLayers: Record<string, boolean>;
   /** Raster weather overlays. Tile templates, or null to take the layer down.
    *  The radar URL changes as the animation steps through its frames. */
-  weatherTiles?: { radar: string | null; clouds: string | null };
+  weatherTiles?: { radar: string | null; clouds: string | null; temperature?: string | null };
   onEntityClick?: (entity: any) => void;
   onMouseCoords?: (coords: { lat: number; lng: number }) => void;
   onRightClick?: (coords: { lat: number; lng: number }) => void;
@@ -2358,7 +2358,9 @@ function OsirisMap({
       map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacity } }, beforeId());
     };
 
-    // Clouds first so the radar, inserted before the same marker, lands above.
+    // Temperature lowest, then clouds, then radar: each is inserted before the
+    // same marker, so the later ones land above.
+    apply('wx-temp', weatherTiles?.temperature ?? null, 0.55, 256, 6);
     apply('wx-clouds', weatherTiles?.clouds ?? null, 0.5, 256, 9);
     apply('wx-radar', weatherTiles?.radar ?? null, 0.75, 512, 7);
   }, [mapReady, weatherTiles]);
@@ -2811,14 +2813,14 @@ function OsirisMap({
 
     try {
       if (mapStyle !== 'dark') {
-        // Add satellite raster tiles
-        if (!map.getSource('satellite-tiles')) {
-          map.addSource('satellite-tiles', {
-            type: 'raster',
-            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-            tileSize: 256,
-            maxzoom: 18,
-          });
+        // The prop is the tile URL: imagery or topographic. One source, retiled
+        // in place when the URL changes, so switching between them costs no
+        // layer churn.
+        const existing = map.getSource('satellite-tiles') as maplibregl.RasterTileSource | undefined;
+        if (!existing) {
+          map.addSource('satellite-tiles', { type: 'raster', tiles: [mapStyle], tileSize: 256, maxzoom: 18 });
+        } else if (existing.tiles?.[0] !== mapStyle) {
+          existing.setTiles([mapStyle]);
         }
         if (!map.getLayer('satellite-layer')) {
           map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, 'day-night-fill');
