@@ -297,7 +297,8 @@ The useful half of this document.
   `../osiris-pr` (node_modules is a junction to the main checkout's) so the
   running dev server was not disturbed; the worktree stays until the PR lands.
   Gate on the author's tree: 627 tests, typecheck clean, lint no worse. The PR
-  itself, and the note to the author, are the user's to send.
+  user opened it the same evening: **simplifaisoul/osiris#333**. Watch it for
+  review comments; changes go on the `fix/firms-sampling` branch in `../osiris-pr`.
 - **Free API keys are unclaimed.** OpenSky (flights refresh 900s → 90s) and
   Cloudflare Radar (unlocks two layers currently hidden) are the two worth
   having. Two more are banked by the operator's choice: TomTom for traffic
