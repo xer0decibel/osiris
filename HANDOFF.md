@@ -231,6 +231,18 @@ The useful half of this document.
   one on :3000 — it serves the same working tree, hot reload included — despite a
   hook saying it cannot be reached. Try before believing either message.
 
+- **A keyless provider's budget is spent per point, not per request.** The
+  temperature field asked Open-Meteo for 384 points on every map settle, each
+  settle made a new three-decimal key, and my own probes added more. Within the
+  hour the address had spent its 5,000 calls; the route turned the 429 into a
+  502, the page returned early, and the layer went blank with the legend
+  reading "Model only" — no hint anywhere. Also: `httpJson` threw the body
+  away, and the body was the useful part ("Hourly API request limit
+  exceeded"). Now 96 points, a lattice-snapped view, one upstream call per 4s,
+  a cooldown until the named limit resets, and the legend says so. The rule:
+  when a layer can fail, the failure must be visible on the map, and an error
+  body must reach the code that decides what to do about it.
+
 ---
 
 ## Open threads
@@ -295,10 +307,10 @@ The useful half of this document.
 
 ## Current state (end of session 2, 2026-09-09, evening)
 
-**714 tests pass**, typecheck clean, lint clean on every file added here, and
+**718 tests pass**, typecheck clean, lint clean on every file added here, and
 **no worse** on every upstream file touched: `page.tsx` 94, `OsirisMap.tsx`
 147, `LayerPanel.tsx` 8 (down from 9), `ArcGISPanel.tsx` 6 — the check to
-repeat after touching any of them. Working tree clean, 55 commits on
+repeat after touching any of them. Working tree clean, 57 commits on
 `feat/intel-layers`, nothing pushed. `npm run dev` on :3000.
 
 The commit chain that worked, for the next session to copy: `cd` into the
