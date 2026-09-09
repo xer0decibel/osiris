@@ -86,6 +86,7 @@ now opens where you are rather than in central Bulgaria.
 | Library updater | `tools/update-kit.mjs` | verified, resumable, never deletes before it swaps |
 | Drive landing page | `usb/START-HERE.html` | one file, no build, works over `file://` |
 | Packaging list | `docs/USB-APPLIANCE.md` | measured sizes, three builds, the three usage modes |
+| Analytics opt-in | `src/middleware.ts` | sends nothing unless `UMAMI_WEBSITE_ID` is set; upstream's site ID is no longer the fallback. Next's own telemetry is disabled on this machine |
 | View toggles | `LayerPanel.tsx`, top of the rail | 3D/2D and MAP/SAT as one button each, showing the current state; replaced the four-segment strip at bottom-left |
 | Typed commands | `lib/commands.ts`, `SearchBar.tsx` | "fires in oregon" in the search box: layer on, camera moved. Places resolve from the bundled gazetteer when the geocoder cannot be reached |
 

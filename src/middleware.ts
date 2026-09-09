@@ -1,12 +1,33 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest, NextFetchEvent } from 'next/server';
 
+/**
+ * Page-view analytics to a self-hosted Umami — and nothing unless one is
+ * configured.
+ *
+ * Every page load used to post two events, a page view and a "Network Log"
+ * carrying the visitor's IP, to the Umami container on the original
+ * deployment's compose network, with that deployment's site ID written into
+ * the code as the fallback. Anyone running a copy was therefore reporting to
+ * someone else's analytics whenever that hostname resolved, and paying two
+ * failed requests per page view whenever it did not.
+ *
+ * Now a deployment opts in. Set UMAMI_WEBSITE_ID, and UMAMI_URL if the server
+ * is not the compose default, and the events are sent; leave them unset and
+ * this middleware does nothing at all. The original deployment keeps its
+ * analytics by setting the one variable it already had a slot for.
+ */
+const UMAMI_WEBSITE_ID = process.env.UMAMI_WEBSITE_ID;
+const UMAMI_URL = process.env.UMAMI_URL || 'http://umami-umami-1:3000';
+
 export function middleware(request: NextRequest, event: NextFetchEvent) {
+  if (!UMAMI_WEBSITE_ID) return NextResponse.next();
+
   const url = request.nextUrl.pathname;
-  
+
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '127.0.0.1';
   const userAgent = request.headers.get('user-agent') || 'Unknown OSIRIS Client';
-  
+
   const basePayload = {
     hostname: request.nextUrl.hostname,
     language: "en-US",
@@ -14,24 +35,23 @@ export function middleware(request: NextRequest, event: NextFetchEvent) {
     screen: "1920x1080",
     title: "OSIRIS",
     url: url,
-    website: process.env.UMAMI_WEBSITE_ID || "cd8f216c-fc3f-45f5-ba1a-e10309a61d18"
+    website: UMAMI_WEBSITE_ID,
   };
 
   /* Bounded, because these are fire-and-forget analytics on the critical path.
-     `umami-umami-1` only resolves inside the production compose network; on a
-     developer's machine it is ENOTFOUND, and two unbounded requests per page
-     view accumulated against the shared connection pool until the app's own
-     API routes could not get a socket. The CCTV route would then time out
-     region after region and the map came up half empty — the analytics were
-     starving the thing they were measuring. */
-  const pageView = fetch('http://umami-umami-1:3000/api/send', {
+     When the Umami host is unreachable, two unbounded requests per page view
+     accumulated against the shared connection pool until the app's own API
+     routes could not get a socket. The CCTV route would then time out region
+     after region and the map came up half empty — the analytics were starving
+     the thing they were measuring. */
+  const pageView = fetch(`${UMAMI_URL}/api/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': userAgent, 'x-forwarded-for': ip },
     body: JSON.stringify({ payload: basePayload, type: "event" }),
     signal: AbortSignal.timeout(2000),
   }).catch(() => {});
 
-  const ipEvent = fetch('http://umami-umami-1:3000/api/send', {
+  const ipEvent = fetch(`${UMAMI_URL}/api/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': userAgent, 'x-forwarded-for': ip },
     body: JSON.stringify({
