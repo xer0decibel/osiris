@@ -35,10 +35,19 @@ describe('property links', () => {
     expect(zipSlug(undefined)).toBeNull();
   });
 
-  it('builds Redfin and LoopNet ZIP pages, and none without a ZIP', () => {
+  it('builds Redfin ZIP pages, and none without a ZIP', () => {
     expect(redfinUrls('97060')).toEqual({ sale: 'https://www.redfin.com/zipcode/97060', rent: 'https://www.redfin.com/zipcode/97060/apartments-for-rent' });
-    expect(loopnetUrls('97060')).toEqual({ lease: 'https://www.loopnet.com/search/commercial-real-estate/97060/for-lease/', sale: 'https://www.loopnet.com/search/commercial-real-estate/97060/for-sale/' });
     expect(redfinUrls('')).toBeNull();
-    expect(loopnetUrls('EC1A')).toBeNull();
+  });
+
+  it('builds LoopNet pages as city-st-zip on the map, the form from a working page', () => {
+    expect(loopnetUrls('Portland', 'OR', '97214')).toEqual({
+      lease: 'https://www.loopnet.com/search/commercial-real-estate/portland-or-97214/for-lease/?view=map',
+      sale: 'https://www.loopnet.com/search/commercial-real-estate/portland-or-97214/for-sale/?view=map',
+    });
+    expect(loopnetUrls('Lake Oswego', 'or', '97034')?.sale).toContain('/lake-oswego-or-97034/');
+    expect(loopnetUrls('', 'OR', '97060')).toBeNull();
+    expect(loopnetUrls('Springdale', 'Oregon', '97060')).toBeNull(); // needs the two-letter code
+    expect(loopnetUrls('London', 'EN', 'EC1A')).toBeNull();
   });
 });

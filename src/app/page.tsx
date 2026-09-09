@@ -2029,9 +2029,9 @@ export default function Dashboard() {
                         Redfin · sale <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                       </>)}
-                      {loopnetUrls(regionDossier.location?.postcode) && (<>
+                      {loopnetUrls(regionDossier.location?.city, regionDossier.location?.state_code, regionDossier.location?.postcode) && (<>
                       <a
-                        href={loopnetUrls(regionDossier.location?.postcode)!.lease}
+                        href={loopnetUrls(regionDossier.location?.city, regionDossier.location?.state_code, regionDossier.location?.postcode)!.lease}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
@@ -2039,7 +2039,7 @@ export default function Dashboard() {
                         LoopNet · lease <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                       <a
-                        href={loopnetUrls(regionDossier.location?.postcode)!.sale}
+                        href={loopnetUrls(regionDossier.location?.city, regionDossier.location?.state_code, regionDossier.location?.postcode)!.sale}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"

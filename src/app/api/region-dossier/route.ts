@@ -33,6 +33,8 @@ export async function GET(request: Request) {
       locationInfo = {
         city: addr.city || addr.town || addr.village || '',
         county: addr.county || '',
+        /* The two-letter state, from the ISO 3166-2 code the geocoder gives (US-OR). */
+        state_code: (addr['ISO3166-2-lvl4'] || '').split('-')[1] || '',
         postcode: addr.postcode || '',
         state: addr.state || addr.region || '',
         country: countryName,

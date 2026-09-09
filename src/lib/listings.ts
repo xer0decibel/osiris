@@ -62,11 +62,22 @@ export function redfinUrls(postcode: string | null | undefined): { rent: string;
   };
 }
 
-export function loopnetUrls(postcode: string | null | undefined): { lease: string; sale: string } | null {
+/** A place name as a URL slug: lower case, letters and digits, hyphens between. */
+export function placeSlug(name: string | null | undefined): string {
+  return (name || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+/**
+ * LoopNet's search pages are addressed by `city-st-zip`, with `?view=map` to
+ * open on the map — the form the operator sent, portland-or-97214, from a
+ * working page. All three parts are needed; the two-letter state is the
+ * geocoder's ISO 3166-2 code.
+ */
+export function loopnetUrls(city: string | null | undefined, stateCode: string | null | undefined, postcode: string | null | undefined): { lease: string; sale: string } | null {
   const zip = zipSlug(postcode);
-  if (!zip) return null;
-  return {
-    lease: `https://www.loopnet.com/search/commercial-real-estate/${zip}/for-lease/`,
-    sale: `https://www.loopnet.com/search/commercial-real-estate/${zip}/for-sale/`,
-  };
+  const c = placeSlug(city);
+  const st = (stateCode || '').trim().toLowerCase();
+  if (!zip || !c || !/^[a-z]{2}$/.test(st)) return null;
+  const base = `https://www.loopnet.com/search/commercial-real-estate/${c}-${st}-${zip}`;
+  return { lease: `${base}/for-lease/?view=map`, sale: `${base}/for-sale/?view=map` };
 }
