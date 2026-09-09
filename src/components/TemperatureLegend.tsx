@@ -9,7 +9,7 @@ import { TEMP_STOPS, cToF, type TempUnit } from '@/lib/isotherms';
  * the other unit beneath in small; a C/F switch; and the observation time and
  * the credit Open-Meteo's licence asks for.
  */
-export default function TemperatureLegend({ unit, onUnit, time }: { unit: TempUnit; onUnit: (u: TempUnit) => void; time: string | null }) {
+export default function TemperatureLegend({ unit, onUnit, time, stations = 0 }: { unit: TempUnit; onUnit: (u: TempUnit) => void; time: string | null; stations?: number }) {
   const lo = TEMP_STOPS[0][0], hi = TEMP_STOPS[TEMP_STOPS.length - 1][0];
   const gradient = `linear-gradient(90deg, ${TEMP_STOPS.map(([t, c]) => `${c} ${((t - lo) / (hi - lo)) * 100}%`).join(', ')})`;
   const ticks = TEMP_STOPS.filter(([t]) => t % 20 === 0 || t === lo || t === hi).map(([t]) => t);
@@ -44,7 +44,7 @@ export default function TemperatureLegend({ unit, onUnit, time }: { unit: TempUn
         ))}
       </div>
       <div className="mt-1 text-[8px] font-mono tracking-wider text-[var(--text-muted)] flex justify-between">
-        <span>Isotherms every 2°C</span>
+        <span>{stations > 0 ? `Model + ${stations} NWS station${stations === 1 ? '' : 's'}` : 'Model only · isotherms every 2°C'}</span>
         <span>{when && `${when} · `}Open-Meteo, CC BY 4.0</span>
       </div>
     </div>

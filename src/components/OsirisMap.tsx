@@ -40,6 +40,8 @@ interface OsirisMapProps {
   weatherTiles?: { radar: string | null; clouds: string | null };
   /** Isotherm bands for the view — see lib/isotherms. Null while the layer is off. */
   temperatureField?: { type: 'FeatureCollection'; features: unknown[] } | null;
+  /** NOAA stations the field was nudged toward, as points with a label. */
+  temperatureStations?: { type: 'FeatureCollection'; features: unknown[] } | null;
   onEntityClick?: (entity: any) => void;
   onMouseCoords?: (coords: { lat: number; lng: number }) => void;
   onRightClick?: (coords: { lat: number; lng: number }) => void;
@@ -142,7 +144,7 @@ const GLYPH_PX = 32;
 const GLYPH_RATIO = 2;
 
 function OsirisMap({
- data, activeLayers, weatherTiles, temperatureField = null, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
+ data, activeLayers, weatherTiles, temperatureField = null, temperatureStations = null, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -470,6 +472,17 @@ function OsirisMap({
         'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 10, 'text-font': ['Open Sans Regular'],
         'text-letter-spacing': 0.05, 'symbol-spacing': 260, 'text-max-angle': 30, visibility: 'none',
       }, paint: { 'text-color': '#ffffff', 'text-opacity': 0.85, 'text-halo-color': '#000000', 'text-halo-width': 1.2 }});
+      /* The thermometers themselves, so the model and the measurement can be
+         seen to agree or not. Coloured on the same ramp as the bands. */
+      map.addSource('wx-stations', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'wx-station-dots', type: 'circle', source: 'wx-stations', layout: { visibility: 'none' }, paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 3, 10, 5],
+        'circle-color': tempColorExpression() as maplibregl.ExpressionSpecification,
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.2, 'circle-opacity': 0.95,
+      }});
+      map.addLayer({ id: 'wx-station-label', type: 'symbol', source: 'wx-stations', minzoom: 7, layout: {
+        'text-field': ['get', 'label'], 'text-size': 10, 'text-font': ['Open Sans Regular'], 'text-offset': [0, 1.1], 'text-anchor': 'top', visibility: 'none',
+      }, paint: { 'text-color': '#ffffff', 'text-halo-color': '#000000', 'text-halo-width': 1.2 }});
       map.addLayer({ id: 'day-night-fill', type: 'fill', source: 'day-night', paint: { 'fill-color': '#000022', 'fill-opacity': 0.35 }});
 
       // Earthquakes — amber threat spectrum
@@ -2404,8 +2417,10 @@ function OsirisMap({
   useEffect(() => {
     if (!mapReady) return;
     setGeo('wx-isotherms', temperatureField?.features ?? []);
+    setGeo('wx-stations', temperatureStations?.features ?? []);
     setVis(['wx-isotherm-fill', 'wx-isotherm-line', 'wx-isotherm-label'], Boolean(activeLayers.wx_temp && temperatureField));
-  }, [mapReady, temperatureField, activeLayers.wx_temp, setGeo, setVis]);
+    setVis(['wx-station-dots', 'wx-station-label'], Boolean(activeLayers.wx_temp && temperatureStations));
+  }, [mapReady, temperatureField, temperatureStations, activeLayers.wx_temp, setGeo, setVis]);
 
   // Named fire incidents → GeoJSON
   useEffect(() => {

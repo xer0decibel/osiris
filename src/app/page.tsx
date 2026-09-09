@@ -31,7 +31,9 @@ import WorldRemote from '@/components/WorldRemote';
 import ArcGISPanel from '@/components/ArcGISPanel';
 import NearbyLayers from '@/components/NearbyLayers';
 import TemperatureLegend from '@/components/TemperatureLegend';
-import { isothermBands, type TempUnit } from '@/lib/isotherms';
+import { isothermBands, formatTemp, type TempUnit } from '@/lib/isotherms';
+import { blendWithStations } from '@/lib/temperature-blend';
+import type { Station } from '@/lib/nws-stations';
 import { padBbox, type TempGrid } from '@/lib/temperature-grid';
 import { NEARBY_CATEGORIES, NEARBY_SETTLE_MS, bboxParam, pickNearby, type NearbyResult } from '@/lib/arcgis-nearby';
 import FloatingWindow, { windowButtonClass, windowIconClass } from '@/components/FloatingWindow';
@@ -138,6 +140,8 @@ export default function Dashboard() {
   /* The temperature field: a grid of current 2m readings for the padded view,
      contoured on the client into isotherm bands in the chosen unit. */
   const [wxTempGrid, setWxTempGrid] = useState<TempGrid | null>(null);
+  /* NOAA's thermometers inside the view, which the field is nudged toward. */
+  const [wxStations, setWxStations] = useState<Station[]>([]);
   const [tempUnit, setTempUnit] = useState<TempUnit>(() => {
     try { const s = typeof window !== 'undefined' ? window.localStorage.getItem('osiris:temp-unit') : null; return s === 'C' || s === 'F' ? s : 'F'; } catch { return 'F'; }
   });
@@ -972,15 +976,30 @@ export default function Dashboard() {
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/temperature?bbox=${tempKey}`);
-        if (!res.ok || cancelled) return;
-        const grid = (await res.json()) as TempGrid;
-        if (!cancelled) setWxTempGrid(grid);
+        const [fieldRes, stationRes] = await Promise.all([
+          fetch(`/api/temperature?bbox=${tempKey}`),
+          fetch(`/api/temperature/stations?bbox=${tempKey}`).catch(() => null),
+        ]);
+        if (!fieldRes.ok || cancelled) return;
+        const grid = (await fieldRes.json()) as TempGrid;
+        const stations = stationRes && stationRes.ok ? ((await stationRes.json()).stations as Station[] | undefined) ?? [] : [];
+        if (!cancelled) { setWxTempGrid(grid); setWxStations(stations); }
       } catch { /* the field keeps what it had */ }
     }, 800);
     return () => { cancelled = true; clearTimeout(t); };
   }, [tempKey]);
-  const temperatureField = useMemo(() => (activeLayers.wx_temp && wxTempGrid ? isothermBands(wxTempGrid, tempUnit) : null), [activeLayers.wx_temp, wxTempGrid, tempUnit]);
+  const temperatureField = useMemo(
+    () => (activeLayers.wx_temp && wxTempGrid ? isothermBands(blendWithStations(wxTempGrid, wxStations), tempUnit) : null),
+    [activeLayers.wx_temp, wxTempGrid, wxStations, tempUnit],
+  );
+  const temperatureStations = useMemo(() => (activeLayers.wx_temp ? {
+    type: 'FeatureCollection' as const,
+    features: wxStations.map(s => ({
+      type: 'Feature' as const,
+      properties: { id: s.id, name: s.name, t: s.tempC, label: formatTemp(s.tempC, tempUnit) },
+      geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
+    })),
+  } : null), [activeLayers.wx_temp, wxStations, tempUnit]);
 
   /* The radar animates on its own while it is on: thirteen frames over two
      hours, held 550ms each. There is no scrubber — the layer is on or off, and
@@ -1361,6 +1380,7 @@ export default function Dashboard() {
           onEntityClick={handleEntityClick} 
           onMouseCoords={handleMouseCoords} 
           temperatureField={temperatureField}
+          temperatureStations={temperatureStations}
           onRightClick={handleRightClick} 
           onViewStateChange={setMapView} 
           flyToLocation={flyToLocation}
@@ -1990,7 +2010,7 @@ export default function Dashboard() {
       {/* ── TEMPERATURE SCALE — while the isotherms are on ── */}
       {activeLayers.wx_temp && !isMobile && (
         <div className="absolute z-[200] bottom-[132px] pointer-events-none" style={{ left: '120px' }}>
-          <TemperatureLegend unit={tempUnit} onUnit={setTempUnit} time={wxTempGrid?.time ?? null} />
+          <TemperatureLegend unit={tempUnit} onUnit={setTempUnit} time={wxTempGrid?.time ?? null} stations={wxStations.length} />
         </div>
       )}
 
