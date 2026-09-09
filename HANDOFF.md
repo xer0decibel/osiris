@@ -181,6 +181,13 @@ The useful half of this document.
   `KeyboardEvent('keydown', { key: 'Enter' })`, which selected the row. Clicking
   the row works through the tool; Enter has to be tested by dispatch.
 
+- **A hidden Browser pane does not advance CSS transitions.** Changing a colour
+  token and reading `getComputedStyle().color` straight after, or 700ms after,
+  returned the *old* colour on every icon with `transition-colors`, and looked
+  exactly like the icons not following the token. They did; the transition was
+  paused because the pane was not being drawn. Measure with a temporary
+  `* { transition: none !important }` in the page, then remove it.
+
 - **A second `next dev` in the same directory refuses to start** while another
   session's is running, on any port. The pane can simply navigate to the running
   one on :3000 — it serves the same working tree, hot reload included — despite a

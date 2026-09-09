@@ -4,7 +4,7 @@ import { memo, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plane, Satellite, Sun, AlertTriangle, Camera,
-  CloudLightning, Ship, Network, Database, Ghost,
+  CloudLightning, Ship, Network, Database,
   Flame, Tv, Radio, Mountain, Anchor, Megaphone, SlidersHorizontal, CloudRain,
   Globe, MapPinned, Moon
 } from 'lucide-react';
@@ -16,8 +16,6 @@ interface LayerPanelProps {
   activeLayers: any;
   setActiveLayers: React.Dispatch<React.SetStateAction<any>>;
   isMobile?: boolean;
-  theme?: 'core' | 'ghost';
-  setTheme?: (theme: 'core' | 'ghost') => void;
   /** Server-side capabilities, e.g. { cloudflare: true }. Layers declaring a
    *  `requires` key stay hidden until the matching capability is present. */
   capabilities?: Record<string, boolean>;
@@ -272,7 +270,7 @@ function SubLayerStem() {
   );
 }
 
-function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'core', setTheme, capabilities = {}, terrainStatus = 'idle', onTerrainRetry, onTerrainFocus, on3DModeSelected, mapProjection, onToggleProjection, mapStyle, onToggleStyle }: LayerPanelProps) {
+function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilities = {}, terrainStatus = 'idle', onTerrainRetry, onTerrainFocus, on3DModeSelected, mapProjection, onToggleProjection, mapStyle, onToggleStyle }: LayerPanelProps) {
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 
   const viewToggles = (mapProjection && onToggleProjection) || (mapStyle && onToggleStyle) ? (
@@ -420,23 +418,6 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
         <AnimatePresence>
           {studioOpen && <StyleStudio isMobile onClose={() => setStudioOpen(false)} />}
         </AnimatePresence>
-
-        {/* MOBILE GHOST TOGGLE */}
-        {setTheme && (
-          <div className="flex items-center justify-between pt-3 border-t border-white/[0.06] px-1">
-            <span className="text-[10px] font-mono tracking-[0.2em] text-white/25 uppercase">Ghost Protocol</span>
-            <button
-              onClick={() => setTheme(theme === 'core' ? 'ghost' : 'core')}
-              className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
-              style={{
-                background: theme === 'ghost' ? 'rgba(179, 136, 255, 0.15)' : 'transparent',
-                boxShadow: theme === 'ghost' ? '0 0 12px rgba(179, 136, 255, 0.3)' : 'none',
-              }}
-            >
-              <Ghost className="w-4 h-4" style={{ color: theme === 'ghost' ? '#B388FF' : 'rgba(255,255,255,0.25)' }} />
-            </button>
-          </div>
-        )}
       </div>
     );
   }
@@ -501,15 +482,15 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                   style={{
                     width: 16,
                     height: 16,
-                    /* The icon itself is the reading: lit cyan while anything
-                       in the group is on, the same cyan the badge used to be.
-                       The count survives in the title and the aria-label. */
+                    /* The icon itself is the reading: lit in the Style
+                       Studio's secondary accent while anything in the group
+                       is on. The count survives in the title and aria-label. */
                     color: groupActive
-                      ? 'rgba(0,229,255,0.95)'
+                      ? 'var(--cyan-primary)'
                       : isOpen
                         ? 'rgba(255,255,255,0.45)'
                         : 'rgba(255,255,255,0.22)',
-                    filter: groupActive ? 'drop-shadow(0 0 5px rgba(0,229,255,0.55))' : 'none',
+                    filter: groupActive ? 'drop-shadow(0 0 4px var(--cyan-primary))' : 'none',
                   }}
                 />
               </button>
@@ -608,36 +589,14 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
           style={{
             width: 15,
             height: 15,
-            color: studioOpen ? 'var(--gold-primary)' : 'rgba(255,255,255,0.15)',
-            filter: studioOpen ? 'drop-shadow(0 0 6px var(--gold-glow))' : 'none',
+            color: studioOpen ? 'var(--cyan-primary)' : 'rgba(255,255,255,0.15)',
+            filter: studioOpen ? 'drop-shadow(0 0 4px var(--cyan-primary))' : 'none',
           }}
         />
       </button>
       <AnimatePresence>
         {studioOpen && <StyleStudio onClose={() => setStudioOpen(false)} />}
       </AnimatePresence>
-
-      {/* Ghost Protocol Toggle */}
-      {setTheme && (
-        <button
-          onClick={() => setTheme(theme === 'core' ? 'ghost' : 'core')}
-          className="w-8 h-8 flex items-center justify-center rounded-full transition-all duration-500 cursor-pointer"
-          style={{
-            background: theme === 'ghost' ? 'rgba(179, 136, 255, 0.1)' : 'transparent',
-          }}
-          title="Ghost Protocol"
-        >
-          <Ghost
-            className="transition-all duration-500"
-            style={{
-              width: 15,
-              height: 15,
-              color: theme === 'ghost' ? '#B388FF' : 'rgba(255,255,255,0.15)',
-              filter: theme === 'ghost' ? 'drop-shadow(0 0 6px rgba(179, 136, 255, 0.5))' : 'none',
-            }}
-          />
-        </button>
-      )}
     </motion.div>
   );
 }

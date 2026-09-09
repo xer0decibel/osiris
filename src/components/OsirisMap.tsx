@@ -52,7 +52,6 @@ interface OsirisMapProps {
   sweepData?: any;
   scanTargets?: any[];
   demoMode?: boolean;
-  theme?: 'core' | 'ghost';
   drawnPolygons?: Array<{ id: string; name: string; geojson: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.LineString>; color: string }>;
   arcgisLayers?: Array<{ id: string; title: string; geojson: any; color?: string; opacity?: number }>;
   /** Active draw mode, or null when not drawing. */
@@ -110,7 +109,7 @@ function computeSolarTerminator(): [number, number][] {
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 
-function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
+function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -309,21 +308,15 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
     map.on('load', () => {
       mapRef.current = map;
       
-      // Theme colors
-      const isGhost = theme === 'ghost';
-      const phantomPurple = '#B388FF';
-      const phantomDark = '#1A0040';
       /* The first paint reads the same `--map-*` properties the recolour
-         effects below push in later. Deriving them from `theme` here as well
-         is what let the two drift: the effect's ghost palette was four
-         distinct violets, this block's was one, and whichever ran last won. */
+         effects below push in later, so the two cannot drift. */
       const bootStyle = getComputedStyle(document.body);
       const boot = readMapPalette(name => bootStyle.getPropertyValue(name));
       const cameraColor = boot.cctv;
       // Broadcast radio has no palette token: it is a literal like the fire and
-      // quake layers, and follows the same ghost-theme collapse as those do.
-      const radioColor = isGhost ? phantomPurple : '#E040FB';
-      const tvColor = isGhost ? phantomPurple : '#00E5A0';
+      // quake layers.
+      const radioColor = '#E040FB';
+      const tvColor = '#00E5A0';
       const flightCom = boot.flightCivil;
       const flightPriv = boot.flightPrivate;
       const flightGov = boot.flightGov;
@@ -335,11 +328,11 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
       createIcon(map, 'plane-pink', flightGov, 24);    
       createIcon(map, 'plane-red', flightMil, 24);     
       createIcon(map, 'plane-grey', boot.flightUnknown, 24);
-      createDot(map, 'dot-gold', isGhost ? phantomPurple : '#D4AF37', 8);
-      createDot(map, 'dot-red', isGhost ? phantomPurple : '#D32F2F', 10);
-      createDot(map, 'dot-orange', isGhost ? phantomPurple : '#E65100', 10);
-      createDot(map, 'dot-green', isGhost ? phantomPurple : '#26A69A', 10);
-      createDot(map, 'dot-fire', isGhost ? phantomPurple : '#E65100', 10);
+      createDot(map, 'dot-gold', '#D4AF37', 8);
+      createDot(map, 'dot-red', '#D32F2F', 10);
+      createDot(map, 'dot-orange', '#E65100', 10);
+      createDot(map, 'dot-green', '#26A69A', 10);
+      createDot(map, 'dot-fire', '#E65100', 10);
       createDot(map, 'dot-cctv', cameraColor, 10);
 
       const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'malware-new', 'network-mesh', 'cyber-arcs', 'cyber-heads', 'cyber-impacts', 'gdelt-events', 'cf-outages', 'cf-attacks', 'radio', 'tv', 'fire-incidents', 'fire-perimeters'];
@@ -386,7 +379,7 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
 
 
       // Day/Night
-      map.addLayer({ id: 'day-night-fill', type: 'fill', source: 'day-night', paint: { 'fill-color': isGhost ? '#0D0030' : '#000022', 'fill-opacity': 0.35 }});
+      map.addLayer({ id: 'day-night-fill', type: 'fill', source: 'day-night', paint: { 'fill-color': '#000022', 'fill-opacity': 0.35 }});
 
       // Earthquakes — amber threat spectrum
       map.addLayer({ id: 'eq-circles', type: 'circle', source: 'earthquakes', paint: {
@@ -1874,11 +1867,10 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
   /**
    * Pull the palette out of the document whenever it can have changed.
    *
-   * Two triggers, and they need different timing. The Style Studio writes the
-   * properties and then dispatches, so reading straight away is correct. A
-   * theme switch flips a class on <body> from an effect in the page component
-   * — a parent, so it runs *after* this one — and reading now would return the
-   * outgoing theme. The extra frame covers that case.
+   * The Style Studio writes the properties and then dispatches, so reading on
+   * its event is correct. The saved settings are applied from an effect in the
+   * page component — a parent, so it runs *after* this one — and a read on
+   * mount alone would miss them. The extra frame covers that case.
    */
   useEffect(() => {
     const read = () => {
@@ -1893,9 +1885,9 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
       cancelAnimationFrame(raf);
       window.removeEventListener(STYLE_EVENT, read);
     };
-  }, [theme]);
+  }, []);
 
-    // Update aircraft icon colors dynamically on theme switch
+    // Update aircraft icon colors when the palette changes
     useEffect(() => {
       if (!mapReady || !mapRef.current) return;
       const map = mapRef.current;
