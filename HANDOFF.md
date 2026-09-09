@@ -290,9 +290,14 @@ The useful half of this document.
   conversation with the author has not happened yet; the user intends to
   contribute the general fixes upstream and to carry the rest as a renamed,
   still-open fork. Open the conversation before the first PR, not with it.
-- **The fires fix deserves its own upstream PR.** 3 files, 292 lines, a real bug
-  with hard numbers, and it helps every existing user. Best first contribution;
-  much better odds than one 2,585-line PR of seven features.
+- **The fires fix is cut for upstream** (2026-09-09, evening): branch
+  `fix/firms-sampling` on the fork, one commit on the author's current master,
+  4 files, 298 lines — the route fix plus the two-line page change that
+  expands the compact payload. Built in a separate worktree at
+  `../osiris-pr` (node_modules is a junction to the main checkout's) so the
+  running dev server was not disturbed; the worktree stays until the PR lands.
+  Gate on the author's tree: 627 tests, typecheck clean, lint no worse. The PR
+  itself, and the note to the author, are the user's to send.
 - **Free API keys are unclaimed.** OpenSky (flights refresh 900s → 90s) and
   Cloudflare Radar (unlocks two layers currently hidden) are the two worth
   having. Two more are banked by the operator's choice: TomTom for traffic
