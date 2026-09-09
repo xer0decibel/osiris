@@ -2,8 +2,8 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
-import { X, RotateCcw, Copy, Check, ClipboardPaste, Undo2 } from 'lucide-react';
+import { RotateCcw, Copy, Check, ClipboardPaste, Undo2, SlidersHorizontal } from 'lucide-react';
+import FloatingWindow, { windowButtonClass, windowIconClass } from './FloatingWindow';
 import { MAP_DEFAULTS, type MapPaletteKey } from '@/lib/map-palette';
 import {
   applySettings,
@@ -275,43 +275,34 @@ function StyleStudio({ onClose, isMobile }: { onClose: () => void; isMobile?: bo
      framer-motion transform, which would otherwise make this fixed panel
      position against the rail instead of the viewport. */
   return createPortal(
-    <motion.div
-      initial={{ opacity: 0, x: isMobile ? 0 : -12, y: isMobile ? 12 : 0 }}
-      animate={{ opacity: 1, x: 0, y: 0 }}
-      exit={{ opacity: 0, x: isMobile ? 0 : -12, y: isMobile ? 12 : 0 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-      className={`z-[400] pointer-events-auto flex flex-col rounded-xl border border-[var(--border-primary)] shadow-[0_16px_48px_rgba(0,0,0,0.7)] ${
+    <FloatingWindow
+      className={`z-[400] pointer-events-auto flex flex-col ${
         isMobile ? 'fixed inset-x-3 bottom-3 top-20' : 'fixed left-[58px] bottom-6 w-[340px] max-h-[min(78vh,720px)]'
       }`}
-      style={{
-        background: 'rgba(6, 4, 14, 0.96)',
-        backdropFilter: 'blur(28px) saturate(1.2)',
-        WebkitBackdropFilter: 'blur(28px) saturate(1.2)',
-      }}
-      role="dialog"
-      aria-label="Style Studio"
+      disabled={isMobile}
+      eyebrow="Styling"
+      meta="Live UI tokens"
+      icon={SlidersHorizontal}
+      title="Style Studio"
+      subtitle="Saved to this browser"
+      ariaLabel="Style Studio"
+      onClose={onClose}
+      closeLabel="Close Style Studio"
+      bodyClassName="flex flex-col"
+      actions={
+        <>
+          <button onClick={paste} title="Paste a shared theme from the clipboard" aria-label="Paste theme" className={windowButtonClass}>
+            <ClipboardPaste className={windowIconClass} />
+          </button>
+          <button onClick={copy} title="Copy this theme as JSON" aria-label="Copy theme" className={windowButtonClass}>
+            {copied ? <Check className="w-3.5 h-3.5 text-[var(--alert-green)]" /> : <Copy className={windowIconClass} />}
+          </button>
+          <button onClick={reset} title="Reset to the active theme" aria-label="Reset" className={windowButtonClass}>
+            <RotateCcw className={windowIconClass} />
+          </button>
+        </>
+      }
     >
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/[0.07] shrink-0">
-        <div className="flex flex-col">
-          <span className="text-[11px] font-mono tracking-[0.22em] uppercase text-[var(--gold-light)]">Style Studio</span>
-          <span className="text-[9px] font-mono tracking-[0.1em] uppercase text-white/25">Live UI tokens</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={paste} title="Paste a shared theme from the clipboard" aria-label="Paste theme" className="w-7 h-7 rounded-md flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/5 transition-colors">
-            <ClipboardPaste className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={copy} title="Copy this theme as JSON" aria-label="Copy theme" className="w-7 h-7 rounded-md flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/5 transition-colors">
-            {copied ? <Check className="w-3.5 h-3.5 text-[var(--alert-green)]" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
-          <button onClick={reset} title="Reset to the active theme" aria-label="Reset" className="w-7 h-7 rounded-md flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/5 transition-colors">
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={onClose} title="Close" aria-label="Close Style Studio" className="w-7 h-7 rounded-md flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/5 transition-colors">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
       <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-3">
         <Section title="Preset">
           <div className="grid grid-cols-3 gap-1 pt-1">
@@ -405,7 +396,7 @@ function StyleStudio({ onClose, isMobile }: { onClose: () => void; isMobile?: bo
           layers &mdash; those carry meaning, not just a look. Reset restores the active theme.
         </p>
       </div>
-    </motion.div>,
+    </FloatingWindow>,
     document.body,
   );
 }

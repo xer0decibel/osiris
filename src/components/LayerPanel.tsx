@@ -8,7 +8,9 @@ import {
   Flame, Tv, Radio, Mountain, Anchor, Megaphone, SlidersHorizontal, CloudRain,
   Globe, MapPinned, Moon
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import StyleStudio from './StyleStudio';
+import FloatingWindow from './FloatingWindow';
 import { TERRAIN_MIN_ZOOM, type TerrainStatus } from '@/lib/map-terrain';
 
 interface LayerPanelProps {
@@ -301,6 +303,8 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilitie
    * far edge closes the thing you were reaching for.
    */
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
+  /** Top edge of the pinned window: level with the button that pinned it. */
+  const [pinnedTop, setPinnedTop] = useState(96);
   const [studioOpen, setStudioOpen] = useState(false);
 
   useEffect(() => {
@@ -357,6 +361,41 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilitie
     }
     return found ? total : null;
   };
+
+  /** The toggles of one group, shared by the hover flyout and the pinned window. */
+  const layerList = (group: LayerGroupDef) => (
+    <div className="flex flex-col gap-0.5">
+      {group.layers.map((layer) => {
+        const isLayerActive = activeLayers[layer.key];
+        const count = getCount(layer.dataKey, layer.catKey);
+        const dormant = !!layer.parent && !activeLayers[layer.parent];
+
+        return (
+          <button
+            key={layer.key}
+            onClick={() => toggle(layer.key)}
+            aria-pressed={!!isLayerActive}
+            aria-label={layer.label}
+            title={dormant ? 'Turn the layer above on to use this' : undefined}
+            className={`relative w-full flex items-center gap-3 py-1.5 rounded-md hover:bg-white/[0.05] transition-colors cursor-pointer text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${layer.parent ? 'pl-[22px] pr-1' : 'px-1'} ${dormant ? 'opacity-40' : ''}`}
+          >
+            {layer.parent && <SubLayerStem />}
+            <ToggleSwitch active={!!isLayerActive} />
+            <span className={`text-[11px] font-mono uppercase tracking-wider flex-1 transition-colors duration-200 ${isLayerActive ? 'text-white/70' : 'text-white/35'}`}>
+              {layer.label}
+              {layer.description && <span className="block mt-0.5 text-[9px] normal-case tracking-normal text-white/35">{layer.description}</span>}
+            </span>
+            {count !== null && (
+              <span className={`text-[10px] font-mono tabular-nums transition-colors ${isLayerActive ? 'text-white/45' : 'text-white/20'}`}>
+                {count.toLocaleString()}
+              </span>
+            )}
+          </button>
+        );
+      })}
+      {group.label === 'DISPLAY' && terrainDetails}
+    </div>
+  );
 
   /* ── MOBILE ── */
   if (isMobile) {
@@ -422,6 +461,10 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilitie
     );
   }
 
+  const pinned = visibleGroups.find(g => g.label === pinnedGroup) ?? null;
+  const pinnedCounted = pinned ? pinned.layers.filter(l => !l.parent) : [];
+  const pinnedActive = pinnedCounted.filter(l => activeLayers[l.key]).length;
+
   /* ── DESKTOP ── */
   return (
     <motion.div
@@ -453,7 +496,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilitie
 
           const activeCount = counted.filter(l => activeLayers[l.key]).length;
           const isPinned = pinnedGroup === group.label;
-          const isOpen = isHovered || isPinned;
+          const isOpen = isHovered && !isPinned;
 
           return (
             <div
@@ -466,8 +509,13 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilitie
                   and announced. Clicking pins the flyout open so it can be
                   worked in rather than only glanced at. */}
               <button
-                onClick={() => setPinnedGroup(isPinned ? null : group.label)}
-                aria-expanded={isOpen}
+                onClick={(e) => {
+                  if (isPinned) { setPinnedGroup(null); return; }
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setPinnedTop(Math.max(8, Math.min(r.top - 12, window.innerHeight - 440)));
+                  setPinnedGroup(group.label);
+                }}
+                aria-expanded={isOpen || isPinned}
                 aria-label={`${group.fullLabel}${activeCount ? ` — ${activeCount} active` : ''}`}
                 title={`${group.fullLabel}${activeCount ? ` — ${activeCount} active` : ''}`}
                 className="relative w-8 h-8 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
@@ -524,47 +572,8 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilitie
                       >
                         {activeCount > 0 ? 'NONE' : 'ALL'}
                       </button>
-                      {isPinned && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setPinnedGroup(null); }}
-                          aria-label="Close"
-                          className="px-1.5 py-0.5 rounded text-[10px] font-mono text-white/40 hover:text-white hover:bg-white/10 transition-colors"
-                        >
-                          ✕
-                        </button>
-                      )}
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      {group.layers.map((layer) => {
-                        const isLayerActive = activeLayers[layer.key];
-                        const count = getCount(layer.dataKey, layer.catKey);
-                        const dormant = !!layer.parent && !activeLayers[layer.parent];
-
-                        return (
-                          <button
-                            key={layer.key}
-                            onClick={() => toggle(layer.key)}
-                            aria-pressed={!!isLayerActive}
-                            aria-label={layer.label}
-                            title={dormant ? 'Turn the layer above on to use this' : undefined}
-                            className={`relative w-full flex items-center gap-3 py-1.5 rounded-md hover:bg-white/[0.05] transition-colors cursor-pointer text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${layer.parent ? 'pl-[22px] pr-1' : 'px-1'} ${dormant ? 'opacity-40' : ''}`}
-                          >
-                            {layer.parent && <SubLayerStem />}
-                            <ToggleSwitch active={!!isLayerActive} />
-                            <span className={`text-[11px] font-mono uppercase tracking-wider flex-1 transition-colors duration-200 ${isLayerActive ? 'text-white/70' : 'text-white/35'}`}>
-                              {layer.label}
-                              {layer.description && <span className="block mt-0.5 text-[9px] normal-case tracking-normal text-white/35">{layer.description}</span>}
-                            </span>
-                            {count !== null && (
-                              <span className={`text-[10px] font-mono tabular-nums transition-colors ${isLayerActive ? 'text-white/45' : 'text-white/20'}`}>
-                                {count.toLocaleString()}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                      {group.label === 'DISPLAY' && terrainDetails}
-                    </div>
+                    {layerList(group)}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -597,6 +606,39 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, capabilitie
       <AnimatePresence>
         {studioOpen && <StyleStudio onClose={() => setStudioOpen(false)} />}
       </AnimatePresence>
+      {/* A pinned group is a window of its own — the same chrome as every
+          other window, portalled to <body> because the rail's transform would
+          otherwise position it — and stays until closed or dragged away. */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {pinned && (
+            <FloatingWindow
+              key={pinned.label}
+              className="fixed z-[400] w-[280px] max-h-[min(70vh,640px)] flex flex-col"
+              style={{ left: 58, top: pinnedTop }}
+              eyebrow="Layers"
+              meta={`${pinnedActive} of ${pinnedCounted.length} on`}
+              icon={pinned.icon}
+              title={pinned.fullLabel}
+              subtitle={`${pinned.layers.length} layers`}
+              ariaLabel={pinned.fullLabel}
+              onClose={() => setPinnedGroup(null)}
+              bodyClassName="overflow-y-auto styled-scrollbar p-3"
+              actions={
+                <button
+                  onClick={() => toggleGroup(pinned.layers)}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-mono tracking-wider text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  {pinnedActive > 0 ? 'NONE' : 'ALL'}
+                </button>
+              }
+            >
+              {layerList(pinned)}
+            </FloatingWindow>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </motion.div>
   );
 }
