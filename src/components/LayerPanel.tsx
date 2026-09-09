@@ -169,7 +169,7 @@ const LAYER_GROUPS: LayerGroupDef[] = [
     layers: [
       { key: 'wx_radar', label: 'Precipitation Radar', description: 'Animated · last 2 hours', dataKey: '' },
       { key: 'wx_clouds', label: 'Cloud Imagery', description: 'VIIRS true colour · daily', dataKey: '' },
-      { key: 'wx_temp', label: 'Surface Temperature', description: 'Isotherms · Open-Meteo + NWS stations', dataKey: '' },
+      { key: 'wx_temp', label: 'Surface Temperature', description: 'Isotherms · Open-Meteo + NWS stations · GFS globe', dataKey: '' },
     ],
   },
   {

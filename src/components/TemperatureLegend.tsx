@@ -7,9 +7,10 @@ import { TEMP_STOPS, cToF, type TempUnit } from '@/lib/isotherms';
  *
  * The ramp the map paints with, as a bar, with ticks in the chosen unit and
  * the other unit beneath in small; a C/F switch; and the observation time and
- * the credit Open-Meteo's licence asks for.
+ * the source — Open-Meteo with the credit its licence asks for when zoomed
+ * in, NOAA's GFS and its run when the view is wide.
  */
-export default function TemperatureLegend({ unit, onUnit, time, stations = 0, note = null }: { unit: TempUnit; onUnit: (u: TempUnit) => void; time: string | null; stations?: number; note?: string | null }) {
+export default function TemperatureLegend({ unit, onUnit, time, stations = 0, note = null, source = 'model', run = null }: { unit: TempUnit; onUnit: (u: TempUnit) => void; time: string | null; stations?: number; note?: string | null; source?: 'model' | 'gfs'; run?: string | null }) {
   const lo = TEMP_STOPS[0][0], hi = TEMP_STOPS[TEMP_STOPS.length - 1][0];
   const gradient = `linear-gradient(90deg, ${TEMP_STOPS.map(([t, c]) => `${c} ${((t - lo) / (hi - lo)) * 100}%`).join(', ')})`;
   const ticks = TEMP_STOPS.filter(([t]) => t % 20 === 0 || t === lo || t === hi).map(([t]) => t);
@@ -44,8 +45,8 @@ export default function TemperatureLegend({ unit, onUnit, time, stations = 0, no
         ))}
       </div>
       <div className="mt-1 text-[8px] font-mono tracking-wider text-[var(--text-muted)] flex justify-between">
-        <span className={note ? 'text-[var(--gold-primary)]' : undefined}>{note ?? (stations > 0 ? `Model + ${stations} NWS station${stations === 1 ? '' : 's'}` : 'Model only · isotherms every 2°C')}</span>
-        <span>{when && `${when} · `}Open-Meteo, CC BY 4.0</span>
+        <span className={note ? 'text-[var(--gold-primary)]' : undefined}>{note ?? (source === 'gfs' ? `Global model · GFS ${run ? run.slice(11, 13) + 'Z run' : ''}`.trim() : stations > 0 ? `Model + ${stations} NWS station${stations === 1 ? '' : 's'}` : 'Model only · isotherms every 2°C')}</span>
+        <span>{when && `${when} · `}{source === 'gfs' ? 'NOAA GFS 0.5°, public domain' : 'Open-Meteo, CC BY 4.0'}</span>
       </div>
     </div>
   );

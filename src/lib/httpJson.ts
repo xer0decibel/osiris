@@ -38,7 +38,7 @@ export interface RequestOptions {
 interface RawResponse {
   status: number;
   headers: IncomingHttpHeaders;
-  body: string;
+  bytes: Buffer;
 }
 
 /**
@@ -64,7 +64,7 @@ function request(url: string, { timeoutMs = 20000, headers = {} }: RequestOption
         // 304 carries no body, and no content-encoding to decode.
         if (status === 304) {
           res.resume();
-          resolve({ status, headers: res.headers, body: '' });
+          resolve({ status, headers: res.headers, bytes: Buffer.alloc(0) });
           return;
         }
 
@@ -77,13 +77,13 @@ function request(url: string, { timeoutMs = 20000, headers = {} }: RequestOption
         else if (encoding === 'deflate') stream = res.pipe(zlib.createInflate());
         else if (encoding === 'br') stream = res.pipe(zlib.createBrotliDecompress());
 
-        let body = '';
-        stream.setEncoding('utf8');
-        stream.on('data', (chunk: string) => { body += chunk; });
+        const chunks: Buffer[] = [];
+        stream.on('data', (chunk: Buffer) => { chunks.push(chunk); });
         stream.on('error', reject);
         stream.on('end', () => {
-          if (status >= 400) reject(new HttpError(status, body.slice(0, 1024)));
-          else resolve({ status, headers: res.headers, body });
+          const bytes = Buffer.concat(chunks);
+          if (status >= 400) reject(new HttpError(status, bytes.toString('utf8', 0, 1024)));
+          else resolve({ status, headers: res.headers, bytes });
         });
       },
     );
@@ -92,9 +92,15 @@ function request(url: string, { timeoutMs = 20000, headers = {} }: RequestOption
   });
 }
 
+/** The transport with no decoding at all — for GRIB2 and other binary answers. */
+export async function httpBytes(url: string, opts: RequestOptions = {}): Promise<Uint8Array> {
+  const { bytes } = await request(url, { ...opts, headers: { Accept: '*/*', ...opts.headers } });
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
 /** The transport, stopping short of the JSON parse — for CSV and plain text. */
 export async function httpText(url: string, opts: RequestOptions = {}): Promise<string> {
-  return (await request(url, opts)).body;
+  return (await request(url, opts)).bytes.toString('utf8');
 }
 
 export async function httpJson<T>(url: string, opts: RequestOptions = {}): Promise<T> {
@@ -142,7 +148,7 @@ export async function httpConditional(
   };
 
   if (res.status === 304) return { changed: false, body: null, ...next };
-  return { changed: true, body: res.body, ...next };
+  return { changed: true, body: res.bytes.toString('utf8'), ...next };
 }
 
 /** Resolve a promise to null instead of throwing — for optional enrichment calls. */
