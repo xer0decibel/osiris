@@ -9,6 +9,7 @@ import { MAP_DEFAULTS, MAP_PALETTE_KEYS, readMapPalette, satColorFor, type MapPa
 import { STYLE_EVENT } from '@/lib/style-tokens';
 import { arrivalBeacons } from '@/lib/malware-intel';
 import SatelliteCard, { type SatelliteDetail } from '@/components/SatelliteCard';
+import { tempColorExpression } from '@/lib/isotherms';
 import CctvPreviews, { type PreviewCamera } from '@/components/CctvPreviews';
 import MapControls from '@/components/MapControls';
 import LiveNewsPreviews, { type PreviewFeed } from '@/components/LiveNewsPreviews';
@@ -36,7 +37,9 @@ interface OsirisMapProps {
   activeLayers: Record<string, boolean>;
   /** Raster weather overlays. Tile templates, or null to take the layer down.
    *  The radar URL changes as the animation steps through its frames. */
-  weatherTiles?: { radar: string | null; clouds: string | null; temperature?: string | null };
+  weatherTiles?: { radar: string | null; clouds: string | null };
+  /** Isotherm bands for the view — see lib/isotherms. Null while the layer is off. */
+  temperatureField?: { type: 'FeatureCollection'; features: unknown[] } | null;
   onEntityClick?: (entity: any) => void;
   onMouseCoords?: (coords: { lat: number; lng: number }) => void;
   onRightClick?: (coords: { lat: number; lng: number }) => void;
@@ -139,7 +142,7 @@ const GLYPH_PX = 32;
 const GLYPH_RATIO = 2;
 
 function OsirisMap({
- data, activeLayers, weatherTiles, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
+ data, activeLayers, weatherTiles, temperatureField = null, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -453,6 +456,20 @@ function OsirisMap({
 
 
       // Day/Night
+      /* ISOTHERMS — the temperature field as bands, under the day/night shading
+         and every data layer. Bands are painted in threshold order so the
+         warmer ones sit on top; the lines and labels trace their edges. */
+      map.addSource('wx-isotherms', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'wx-isotherm-fill', type: 'fill', source: 'wx-isotherms', layout: { 'fill-sort-key': ['get', 't'], visibility: 'none' }, paint: {
+        'fill-color': tempColorExpression() as maplibregl.ExpressionSpecification, 'fill-opacity': 0.42,
+      }});
+      map.addLayer({ id: 'wx-isotherm-line', type: 'line', source: 'wx-isotherms', layout: { visibility: 'none' }, paint: {
+        'line-color': '#ffffff', 'line-opacity': 0.28, 'line-width': 0.8,
+      }});
+      map.addLayer({ id: 'wx-isotherm-label', type: 'symbol', source: 'wx-isotherms', layout: {
+        'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 10, 'text-font': ['Open Sans Regular'],
+        'text-letter-spacing': 0.05, 'symbol-spacing': 260, 'text-max-angle': 30, visibility: 'none',
+      }, paint: { 'text-color': '#ffffff', 'text-opacity': 0.85, 'text-halo-color': '#000000', 'text-halo-width': 1.2 }});
       map.addLayer({ id: 'day-night-fill', type: 'fill', source: 'day-night', paint: { 'fill-color': '#000022', 'fill-opacity': 0.35 }});
 
       // Earthquakes — amber threat spectrum
@@ -2358,9 +2375,7 @@ function OsirisMap({
       map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacity } }, beforeId());
     };
 
-    // Temperature lowest, then clouds, then radar: each is inserted before the
-    // same marker, so the later ones land above.
-    apply('wx-temp', weatherTiles?.temperature ?? null, 0.55, 256, 6);
+    // Clouds first so the radar, inserted before the same marker, lands above.
     apply('wx-clouds', weatherTiles?.clouds ?? null, 0.5, 256, 9);
     apply('wx-radar', weatherTiles?.radar ?? null, 0.75, 512, 7);
   }, [mapReady, weatherTiles]);
@@ -2384,6 +2399,13 @@ function OsirisMap({
     map.addSource(id, { type: 'raster', tiles: [`${window.location.origin}/api/traffic/tile/{z}/{x}/{y}`], tileSize: 256, minzoom: 6, maxzoom: 22 });
     map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': 0.85 } }, before);
   }, [mapReady, activeLayers.traffic]);
+
+  // Temperature field → isotherm bands
+  useEffect(() => {
+    if (!mapReady) return;
+    setGeo('wx-isotherms', temperatureField?.features ?? []);
+    setVis(['wx-isotherm-fill', 'wx-isotherm-line', 'wx-isotherm-label'], Boolean(activeLayers.wx_temp && temperatureField));
+  }, [mapReady, temperatureField, activeLayers.wx_temp, setGeo, setVis]);
 
   // Named fire incidents → GeoJSON
   useEffect(() => {

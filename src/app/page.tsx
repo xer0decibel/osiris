@@ -30,6 +30,9 @@ import LiveAlerts from '@/components/LiveAlerts';
 import WorldRemote from '@/components/WorldRemote';
 import ArcGISPanel from '@/components/ArcGISPanel';
 import NearbyLayers from '@/components/NearbyLayers';
+import TemperatureLegend from '@/components/TemperatureLegend';
+import { isothermBands, type TempUnit } from '@/lib/isotherms';
+import { padBbox, type TempGrid } from '@/lib/temperature-grid';
 import { NEARBY_CATEGORIES, NEARBY_SETTLE_MS, bboxParam, pickNearby, type NearbyResult } from '@/lib/arcgis-nearby';
 import FloatingWindow, { windowButtonClass, windowIconClass } from '@/components/FloatingWindow';
 const OsirisMap = dynamic(() => import('@/components/OsirisMap'), { ssr: false });
@@ -132,7 +135,12 @@ export default function Dashboard() {
   const [activeTvCountry, setActiveTvCountry] = useState<any>(null);
   const [wxFrames, setWxFrames] = useState<{ time: number; url: string; forecast: boolean }[]>([]);
   const [wxCloudUrl, setWxCloudUrl] = useState<string | null>(null);
-  const [wxTempUrl, setWxTempUrl] = useState<string | null>(null);
+  /* The temperature field: a grid of current 2m readings for the padded view,
+     contoured on the client into isotherm bands in the chosen unit. */
+  const [wxTempGrid, setWxTempGrid] = useState<TempGrid | null>(null);
+  const [tempUnit, setTempUnit] = useState<TempUnit>(() => {
+    try { const s = typeof window !== 'undefined' ? window.localStorage.getItem('osiris:temp-unit') : null; return s === 'C' || s === 'F' ? s : 'F'; } catch { return 'F'; }
+  });
   const [wxIndex, setWxIndex] = useState(0);
   const [spaceWeather, setSpaceWeather] = useState<any>(null);
   const [showLayers, setShowLayers] = useState(true);
@@ -914,7 +922,7 @@ export default function Dashboard() {
      switched on rather than fetching once like everything in layerFetchedRef.
      Nothing is fetched at all until one of the two overlays is enabled. */
   useEffect(() => {
-    if (!activeLayers.wx_radar && !activeLayers.wx_clouds && !activeLayers.wx_temp) return;
+    if (!activeLayers.wx_radar && !activeLayers.wx_clouds) return;
     let cancelled = false;
 
     const load = async () => {
@@ -926,7 +934,6 @@ export default function Dashboard() {
         const frames = Array.isArray(d?.radar?.frames) ? d.radar.frames : [];
         setWxFrames(frames);
         setWxCloudUrl(d?.clouds?.url ?? null);
-        setWxTempUrl(d?.temperature?.url ?? null);
         /* Open on the newest observation. On a refresh the whole window has
            shifted forward, so an index left pointing past the end is snapped
            back rather than silently clamping to a frame that no longer exists. */
@@ -939,7 +946,7 @@ export default function Dashboard() {
     load();
     const iv = setInterval(load, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [activeLayers.wx_radar, activeLayers.wx_clouds, activeLayers.wx_temp]);
+  }, [activeLayers.wx_radar, activeLayers.wx_clouds]);
 
   /* Memoised because OsirisMap rebuilds its raster sources whenever this prop's
      identity changes. A fresh object every render would tear the radar down and
@@ -949,8 +956,31 @@ export default function Dashboard() {
       ? (wxFrames[Math.min(wxIndex, wxFrames.length - 1)]?.url ?? null)
       : null,
     clouds: activeLayers.wx_clouds ? wxCloudUrl : null,
-    temperature: activeLayers.wx_temp ? wxTempUrl : null,
-  }), [activeLayers.wx_radar, activeLayers.wx_clouds, activeLayers.wx_temp, wxFrames, wxIndex, wxCloudUrl, wxTempUrl]);
+  }), [activeLayers.wx_radar, activeLayers.wx_clouds, wxFrames, wxIndex, wxCloudUrl]);
+
+  useEffect(() => {
+    try { window.localStorage.setItem('osiris:temp-unit', tempUnit); } catch { /* private mode */ }
+  }, [tempUnit]);
+
+  /* One request per place the map settles, for a view padded by a fifth each
+     side so the bands run off the edges. The route caches ten minutes per
+     rounded view, so a nudge costs nothing. */
+  const tempBounds = activeLayers.wx_temp ? mapCenter?.bounds ?? null : null;
+  const tempKey = tempBounds ? padBbox([tempBounds.west, tempBounds.south, tempBounds.east, tempBounds.north]).map(n => n.toFixed(3)).join(',') : null;
+  useEffect(() => {
+    if (!tempKey) return; // the last field is kept; the layer being off hides it
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/temperature?bbox=${tempKey}`);
+        if (!res.ok || cancelled) return;
+        const grid = (await res.json()) as TempGrid;
+        if (!cancelled) setWxTempGrid(grid);
+      } catch { /* the field keeps what it had */ }
+    }, 800);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [tempKey]);
+  const temperatureField = useMemo(() => (activeLayers.wx_temp && wxTempGrid ? isothermBands(wxTempGrid, tempUnit) : null), [activeLayers.wx_temp, wxTempGrid, tempUnit]);
 
   /* The radar animates on its own while it is on: thirteen frames over two
      hours, held 550ms each. There is no scrubber — the layer is on or off, and
@@ -1330,6 +1360,7 @@ export default function Dashboard() {
           mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : mapStyle === 'topo' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
           onEntityClick={handleEntityClick} 
           onMouseCoords={handleMouseCoords} 
+          temperatureField={temperatureField}
           onRightClick={handleRightClick} 
           onViewStateChange={setMapView} 
           flyToLocation={flyToLocation}
@@ -1955,6 +1986,13 @@ export default function Dashboard() {
       )}
 
       {/* Scale bar is now integrated into the map controls section above */}
+
+      {/* ── TEMPERATURE SCALE — while the isotherms are on ── */}
+      {activeLayers.wx_temp && !isMobile && (
+        <div className="absolute z-[200] bottom-[132px] pointer-events-none" style={{ left: '120px' }}>
+          <TemperatureLegend unit={tempUnit} onUnit={setTempUnit} time={wxTempGrid?.time ?? null} />
+        </div>
+      )}
 
       {/* ── AUTO FIND — layers ArcGIS Online has for this view ── */}
       {arcgisAuto && !isMobile && (
