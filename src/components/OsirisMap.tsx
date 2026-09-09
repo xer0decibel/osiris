@@ -14,6 +14,7 @@ import MapControls from '@/components/MapControls';
 import LiveNewsPreviews, { type PreviewFeed } from '@/components/LiveNewsPreviews';
 import { attachTerrain, type TerrainStatus } from '@/lib/map-terrain';
 import { watchMapStartup, type MapStartupStatus } from '@/lib/map-startup';
+import { readHomeView, DEFAULT_VIEW } from '@/lib/homeView';
 import { applyMapProjection } from '@/lib/map-projection';
 
 /** The catalogue fields the satellite layer and its popup actually read. */
@@ -32,6 +33,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 interface OsirisMapProps {
   data: any;
   activeLayers: Record<string, boolean>;
+  /** Raster weather overlays. Tile templates, or null to take the layer down.
+   *  The radar URL changes as the animation steps through its frames. */
+  weatherTiles?: { radar: string | null; clouds: string | null };
   onEntityClick?: (entity: any) => void;
   onMouseCoords?: (coords: { lat: number; lng: number }) => void;
   onRightClick?: (coords: { lat: number; lng: number }) => void;
@@ -105,7 +109,7 @@ function computeSolarTerminator(): [number, number][] {
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 
-function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
+function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -247,10 +251,17 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
     const container = containerRef.current;
     maplibregl.setWorkerUrl(`/vendor/maplibre/${maplibregl.getVersion()}/maplibre-gl-worker.mjs`);
+    /* Opens where the last IP lookup placed the operator, falling back to the
+       whole world. It used to be a fixed point in central Bulgaria, which is
+       simply where this project was written — every other user got dropped
+       there and had to wait three seconds to be moved, or stayed put entirely
+       if they clicked first or the lookup failed. Read here rather than passed
+       as a prop because it is only ever needed once, at construction. */
+    const home = readHomeView() ?? DEFAULT_VIEW;
     const baseOptions = {
       container,
       style: styleUrl,
-      center: [25.48, 42.70] as [number, number], zoom: 6.5, minZoom: 1.5, maxZoom: 18,
+      center: [home.lng, home.lat] as [number, number], zoom: home.zoom, minZoom: 1.5, maxZoom: 18,
       attributionControl: false as const,
       // Keep the supported pitch range from the start; terrain must not flatten
       // an already-positioned camera when its performance limits are attached.
@@ -302,6 +313,10 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       const bootStyle = getComputedStyle(document.body);
       const boot = readMapPalette(name => bootStyle.getPropertyValue(name));
       const cameraColor = boot.cctv;
+      // Broadcast radio has no palette token: it is a literal like the fire and
+      // quake layers, and follows the same ghost-theme collapse as those do.
+      const radioColor = isGhost ? phantomPurple : '#E040FB';
+      const tvColor = isGhost ? phantomPurple : '#00E5A0';
       const flightCom = boot.flightCivil;
       const flightPriv = boot.flightPrivate;
       const flightGov = boot.flightGov;
@@ -320,7 +335,7 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       createDot(map, 'dot-fire', isGhost ? phantomPurple : '#E65100', 10);
       createDot(map, 'dot-cctv', cameraColor, 10);
 
-      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'malware-new', 'network-mesh', 'cyber-arcs', 'cyber-heads', 'cyber-impacts', 'gdelt-events', 'cf-outages', 'cf-attacks'];
+      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'malware-new', 'network-mesh', 'cyber-arcs', 'cyber-heads', 'cyber-impacts', 'gdelt-events', 'cf-outages', 'cf-attacks', 'radio', 'tv', 'fire-incidents', 'fire-perimeters'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
 
       // ── FLIGHT ROUTE VISUALIZATION SOURCES & LAYERS ──
@@ -377,9 +392,68 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       }, paint: { 'text-color': '#F9A825', 'text-halo-color': '#000', 'text-halo-width': 1 }});
 
       // Fires — burnt sienna
-      map.addLayer({ id: 'fires-heat', type: 'circle', source: 'fires', paint: {
-        'circle-radius': ['interpolate',['linear'],['zoom'], 1,2, 5,4, 10,8],
-        'circle-color': '#E65100', 'circle-opacity': 0.45, 'circle-blur': 0.5,
+      /* FIRES — a genuine heatmap up close to the world view, weighted by fire
+         radiative power. FRP is the measured output in megawatts and spans
+         orders of magnitude, so the weight is a clamped curve: without it a
+         single 500MW front saturates the whole scale and every ordinary fire
+         renders as nothing. Detections carry no extent, only a location and an
+         intensity, which is exactly what a density surface is for. */
+      map.addLayer({ id: 'fires-heat', type: 'heatmap', source: 'fires', maxzoom: 9, paint: {
+        'heatmap-weight': ['interpolate',['linear'],['get','frp'], 0,0.15, 10,0.4, 50,0.75, 200,1],
+        'heatmap-intensity': ['interpolate',['linear'],['zoom'], 0,1, 9,3],
+        'heatmap-color': ['interpolate',['linear'],['heatmap-density'],
+          0,'rgba(0,0,0,0)',
+          0.15,'rgba(90,20,0,0.45)',
+          0.35,'rgba(180,50,0,0.65)',
+          0.55,'rgba(230,100,0,0.8)',
+          0.75,'rgba(255,160,25,0.9)',
+          1,'rgba(255,240,170,0.95)'],
+        'heatmap-radius': ['interpolate',['linear'],['zoom'], 0,3, 4,10, 9,26],
+        // Handed over to the point layer rather than stacking both at high zoom.
+        'heatmap-opacity': ['interpolate',['linear'],['zoom'], 7,0.9, 9,0],
+      }});
+      /* PERIMETERS — the burned footprint, under everything else fire-related
+         so the hotspots and incident markers stay readable on top of it. */
+      map.addLayer({ id: 'fire-perimeter-fill', type: 'fill', source: 'fire-perimeters', paint: {
+        'fill-color': '#FF6D00', 'fill-opacity': 0.18,
+      }});
+      map.addLayer({ id: 'fire-perimeter-line', type: 'line', source: 'fire-perimeters', paint: {
+        'line-color': '#FF8F1F',
+        'line-width': ['interpolate',['linear'],['zoom'], 3,0.6, 8,1.6, 12,2.4],
+        'line-opacity': 0.85,
+      }});
+
+      /* NAMED INCIDENTS — agency-reported fires. Radius follows acreage on a
+         square-root scale because the figures span five orders of magnitude and
+         a linear radius would render everything under 50,000 acres invisible.
+         Colour is containment, which is the thing an operator actually scans
+         for: red is uncontained, green is nearly out. */
+      map.addLayer({ id: 'fire-incident-glow', type: 'circle', source: 'fire-incidents', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'],
+          3, ['*', ['sqrt', ['max', ['get','acres'], 1]], 0.03],
+          7, ['*', ['sqrt', ['max', ['get','acres'], 1]], 0.09],
+          11, ['*', ['sqrt', ['max', ['get','acres'], 1]], 0.2]],
+        'circle-color': '#FF3B30', 'circle-opacity': 0.16, 'circle-blur': 0.7,
+      }});
+      map.addLayer({ id: 'fire-incident-dots', type: 'circle', source: 'fire-incidents', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 3,3.5, 7,5.5, 12,8],
+        'circle-color': ['interpolate',['linear'],['coalesce',['get','contained'],0],
+          0,'#FF1744', 50,'#FFB300', 100,'#26A69A'],
+        'circle-opacity': 0.95,
+        'circle-stroke-width': 1.5, 'circle-stroke-color': '#000000', 'circle-stroke-opacity': 0.8,
+      }});
+      map.addLayer({ id: 'fire-incident-label', type: 'symbol', source: 'fire-incidents', minzoom: 6, layout: {
+        'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 1.5], 'text-max-width': 14, 'text-allow-overlap': false,
+      }, paint: { 'text-color': '#FFB300', 'text-halo-color': '#000000', 'text-halo-width': 1.5, 'text-opacity': 0.9 }});
+
+      /* Individual detections take over where the density surface fades out.
+         This is also the click target: a heatmap has no features to query. */
+      map.addLayer({ id: 'fires-dots', type: 'circle', source: 'fires', minzoom: 7, paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 7,2, 10,4, 14,7],
+        'circle-color': ['interpolate',['linear'],['get','frp'], 0,'#FFC107', 15,'#FF6D00', 80,'#D32F2F'],
+        'circle-opacity': ['interpolate',['linear'],['zoom'], 7,0, 9,0.85],
+        'circle-stroke-width': 0,
       }});
 
       // CCTV — outer glow ring (black/white depending on theme)
@@ -398,6 +472,49 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
         'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
         'text-offset': [0, 1.8], 'text-max-width': 12, 'text-allow-overlap': false,
       }, paint: { 'text-color': cameraColor, 'text-halo-color': '#000000', 'text-halo-width': 1.5, 'text-opacity': 0.8 }});
+
+      // RADIO — outer glow ring
+      map.addLayer({ id: 'radio-glow', type: 'circle', source: 'radio', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,4, 5,7, 10,12, 14,18],
+        'circle-color': radioColor, 'circle-opacity': 0.18, 'circle-blur': 1,
+      }});
+      // RADIO — main dot. Smaller than the camera dot: there are an order of
+      // magnitude more of them and they cluster hard over cities.
+      map.addLayer({ id: 'radio-dots', type: 'circle', source: 'radio', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,2.5, 5,4, 10,7, 14,10],
+        'circle-color': radioColor, 'circle-opacity': 0.9,
+        'circle-stroke-width': 1.5, 'circle-stroke-color': '#000000', 'circle-stroke-opacity': 0.85,
+      }});
+      // RADIO — labels at zoom 9+
+      map.addLayer({ id: 'radio-label', type: 'symbol', source: 'radio', minzoom: 9, layout: {
+        'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 1.6], 'text-max-width': 12, 'text-allow-overlap': false,
+      }, paint: { 'text-color': radioColor, 'text-halo-color': '#000000', 'text-halo-width': 1.5, 'text-opacity': 0.85 }});
+
+      // TV — one marker per country, so the radius carries the channel count
+      // rather than every marker looking alike. Square-rooted: the counts run
+      // from 1 to ~1500 and a linear scale would bury everything under the US.
+      map.addLayer({ id: 'tv-glow', type: 'circle', source: 'tv', paint: {
+        // The zoom interpolation has to be the outermost expression — MapLibre
+        // rejects a zoom curve nested inside another operator, and the layer is
+        // then dropped from the style entirely. So the count scaling goes inside
+        // each stop rather than multiplying the curve from outside.
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          1, ['*', ['sqrt', ['get', 'count']], 0.6],
+          5, ['*', ['sqrt', ['get', 'count']], 1.1],
+          10, ['*', ['sqrt', ['get', 'count']], 1.8]],
+        'circle-color': tvColor, 'circle-opacity': 0.14, 'circle-blur': 0.9,
+      }});
+      map.addLayer({ id: 'tv-dots', type: 'circle', source: 'tv', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,4, 5,6, 10,9],
+        'circle-color': tvColor, 'circle-opacity': 0.9,
+        'circle-stroke-width': 2, 'circle-stroke-color': '#000000', 'circle-stroke-opacity': 0.85,
+      }});
+      map.addLayer({ id: 'tv-label', type: 'symbol', source: 'tv', minzoom: 3, layout: {
+        'text-field': ['concat', ['get','name'], '  ', ['to-string', ['get','count']]],
+        'text-size': 9, 'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 1.6], 'text-max-width': 14, 'text-allow-overlap': false,
+      }, paint: { 'text-color': tvColor, 'text-halo-color': '#000000', 'text-halo-width': 1.5, 'text-opacity': 0.85 }});
 
       // GDELT
 
@@ -972,6 +1089,47 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       map.flyTo({ center: coords, zoom: Math.max(map.getZoom(), 13), duration: 1000 });
     });
 
+    // ── RADIO (opens RadioPlayer panel) ──
+    // No flyTo here, unlike the cameras: tuning a station is not a reason to
+    // move the map out from under whatever the operator was already looking at.
+    // The player's locate control centres it on request instead.
+    map.on('click', 'radio-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+      onEntityClick?.({
+        type: 'radio',
+        id: p.id,
+        name: p.name,
+        url: p.url,
+        homepage: p.homepage,
+        country: p.country,
+        state: p.state,
+        codec: p.codec,
+        bitrate: p.bitrate,
+        // GeoJSON properties are primitives, so the tag list travels as a joined
+        // string and is split back apart here.
+        tags: typeof p.tags === 'string' && p.tags ? p.tags.split(',') : [],
+        lat: coords[1],
+        lng: coords[0],
+      });
+    });
+
+    // ── TV (opens TvViewer, which lists that country's channels) ──
+    map.on('click', 'tv-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+      onEntityClick?.({
+        type: 'tv',
+        code: p.code,
+        name: p.name,
+        count: p.count,
+        lat: coords[1],
+        lng: coords[0],
+      });
+    });
+
     // ── Earthquakes (with USGS link) ──
     map.on('click', 'eq-circles', e => {
       if (!e.features?.length) return;
@@ -991,11 +1149,12 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Satellites (SatNOGS powered) ──
     // Layers with their own click handlers. The satellite pick defers to
     // these, and to nothing else — the basemap is not a click target.
-    const CLICKABLE_LAYERS = new Set(['conflict-icons','cctv-dots','eq-circles','fires-heat',
+    const CLICKABLE_LAYERS = new Set(['conflict-icons','cctv-dots','eq-circles','fires-dots',
       'gdelt-dots','weather-dots','infra-dots','maritime-dots','choke-dots','news-dots',
       'balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots',
       'sdk-sea','sdk-air','sdk-intel','malware-dots','cyber-heads','gdelt-events-dots',
-      'cf-outage-dots','cf-attack-dots','flight-dots','military-dots','jet-dots','private-dots']);
+      'cf-outage-dots','cf-attack-dots','flight-dots','military-dots','jet-dots','private-dots',
+      'radio-dots','tv-dots','fire-incident-dots','fire-perimeter-fill']);
 
     // Satellites are picked on the GPU: the pick pass runs the same vertex
     // shader as the visible one, so the target is always exactly where the
@@ -1080,17 +1239,109 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     });
 
     // ── Fires (with NASA FIRMS link) ──
-    map.on('click', 'fires-heat', e => {
+    map.on('click', 'fires-dots', e => {
       if (!e.features?.length) return;
       const p = e.features[0].properties as any;
       const coords = (e.features[0].geometry as any).coordinates;
+      /* FIRMS reports the overpass as a UTC date plus an HHMM string. Age is
+         what actually matters when reading a 24-hour product — a detection from
+         twenty hours ago is very different from one twenty minutes old — so it
+         is spelled out rather than leaving the reader to subtract. */
+      const detectedAt = (() => {
+        const d = String(p.date || ''), t = String(p.time || '').padStart(4, '0');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+        const ms = Date.parse(`${d}T${t.slice(0, 2)}:${t.slice(2)}:00Z`);
+        return Number.isFinite(ms) ? ms : null;
+      })();
+      const age = detectedAt === null ? '' : (() => {
+        const mins = Math.max(0, Math.round((Date.now() - detectedAt) / 60000));
+        if (mins < 60) return `${mins}m ago`;
+        const h = Math.floor(mins / 60);
+        return h < 48 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
+      })();
+      const detected = detectedAt === null
+        ? '—'
+        : `${new Date(detectedAt).toISOString().slice(11, 16)}Z${age ? ' · ' + age : ''}`;
+
+      const conf = String(p.confidence || '').toLowerCase();
+      const confColor = conf === 'high' ? '#FF3B30' : conf === 'low' ? '#9BB5CC' : '#FFB300';
+      const frp = typeof p.frp === 'number' ? p.frp : Number(p.frp);
+      /* Radiative power is the closest thing FIRMS gives to "how big is it".
+         Brightness saturates on intense fires; FRP keeps climbing, which is why
+         it leads here and drives the heatmap weighting. */
+      const frpText = Number.isFinite(frp) && frp > 0 ? `${frp.toFixed(1)} MW` : '—';
+
       popup(coords, `<div style="${pStyle}border:1px solid rgba(255,107,0,0.3);">
-        <div style="color:#FF6B00;font-size:12px;font-weight:700;margin-bottom:6px;">🔥 ACTIVE FIRE DETECTED</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;margin-bottom:8px;">
-          <div><span style="color:#5C5A54;">BRIGHTNESS</span><br/><span style="color:#FF6B00;">${p.brightness||'—'}K</span></div>
-          <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
+        <div style="color:#FF6B00;font-size:12px;font-weight:700;margin-bottom:2px;">🔥 ACTIVE FIRE DETECTION</div>
+        <div style="color:#5C5A54;font-size:8px;letter-spacing:0.14em;margin-bottom:8px;">${htmlEsc(p.sensor || 'NASA FIRMS')}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 4px;font-size:9px;margin-bottom:8px;">
+          <div><span style="color:#5C5A54;">RADIATIVE POWER</span><br/><span style="color:#FF6B00;font-weight:700;">${frpText}</span></div>
+          <div><span style="color:#5C5A54;">BRIGHTNESS</span><br/><span style="color:#FF9500;">${p.brightness || '—'} K</span></div>
+          <div><span style="color:#5C5A54;">CONFIDENCE</span><br/><span style="color:${confColor};text-transform:uppercase;">${htmlEsc(p.confidence || '—')}</span></div>
+          <div><span style="color:#5C5A54;">DETECTED</span><br/><span style="color:#E8E6E0;">${detected}</span></div>
+          <div style="grid-column:1/-1;"><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(4)}°, ${coords[0].toFixed(4)}°</span></div>
         </div>
         <a href="https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:noaa20-viirs,viirs,modis_a,modis_t;@${coords[0]},${coords[1]},10z" target="_blank" style="${linkStyle}color:#FF6B00;border:1px solid rgba(255,107,0,0.4);background:rgba(255,107,0,0.1);">🛰️ NASA FIRMS MAP</a>
+      </div>`);
+    });
+
+    // ── NAMED FIRE INCIDENTS (NIFC / WFIGS) ──
+    map.on('click', 'fire-incident-dots', e => {
+      if (!e.features?.length) return;
+      const p = e.features[0].properties as any;
+      const coords = (e.features[0].geometry as any).coordinates;
+
+      const acres = Number(p.acres);
+      const acreText = Number.isFinite(acres) && acres > 0 ? Math.round(acres).toLocaleString('en-US') + ' ac' : 'not reported';
+      const cont = Number(p.contained);
+      const hasCont = Number.isFinite(cont);
+      // Same scale the marker colour uses, so the popup agrees with the dot.
+      const contColor = !hasCont ? '#9BB5CC' : cont >= 90 ? '#26A69A' : cont >= 50 ? '#FFB300' : '#FF1744';
+      const disc = Number(p.discovered);
+      const discText = Number.isFinite(disc) && disc > 0
+        ? (() => {
+            const days = Math.floor((Date.now() - disc) / 86400000);
+            const d = new Date(disc).toISOString().slice(0, 10);
+            return days > 0 ? `${d} · ${days}d` : d;
+          })()
+        : '—';
+      const crew = Number(p.personnel);
+      const where = [p.county ? htmlEsc(p.county) + ' Co.' : '', htmlEsc(p.state || '')].filter(Boolean).join(', ');
+
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(255,59,48,0.35);">
+        <div style="color:#FF6B00;font-size:12px;font-weight:700;margin-bottom:2px;">${htmlEsc(p.name || 'INCIDENT')}</div>
+        <div style="color:#5C5A54;font-size:8px;letter-spacing:0.14em;margin-bottom:8px;">${p.kind === 'RX' ? 'PRESCRIBED BURN' : 'WILDFIRE'} · NIFC/WFIGS${where ? ' · ' + where : ''}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 4px;font-size:9px;margin-bottom:8px;">
+          <div><span style="color:#5C5A54;">SIZE</span><br/><span style="color:#FF6B00;font-weight:700;">${acreText}</span></div>
+          <div><span style="color:#5C5A54;">CONTAINED</span><br/><span style="color:${contColor};font-weight:700;">${hasCont ? cont + '%' : '—'}</span></div>
+          <div><span style="color:#5C5A54;">CAUSE</span><br/><span style="color:#E8E6E0;">${htmlEsc(p.cause || '—')}</span></div>
+          <div><span style="color:#5C5A54;">PERSONNEL</span><br/><span style="color:#E8E6E0;">${Number.isFinite(crew) && crew > 0 ? crew.toLocaleString('en-US') : '—'}</span></div>
+          <div><span style="color:#5C5A54;">DISCOVERED</span><br/><span style="color:#E8E6E0;">${discText}</span></div>
+          <div><span style="color:#5C5A54;">AGENCY</span><br/><span style="color:#E8E6E0;">${htmlEsc(p.agency || '—')}</span></div>
+        </div>
+        <a href="https://inciweb.wildfire.gov/" target="_blank" style="${linkStyle}color:#FF6B00;border:1px solid rgba(255,107,0,0.4);background:rgba(255,107,0,0.1);">🔥 INCIWEB</a>
+      </div>`);
+    });
+
+    // ── FIRE PERIMETERS ──
+    map.on('click', 'fire-perimeter-fill', e => {
+      if (!e.features?.length) return;
+      /* A named incident sits inside its own perimeter, and its marker carries
+         acreage, containment, cause, crew and agency where the outline carries
+         two numbers. Both handlers fire for the same click, so the outline
+         stands aside wherever the marker is also under the cursor. */
+      if (map.queryRenderedFeatures(e.point, { layers: ['fire-incident-dots'] }).length) return;
+      const p = e.features[0].properties as any;
+      const acres = Number(p.acres);
+      const cont = Number(p.contained);
+      popup(e.lngLat, `<div style="${pStyle}border:1px solid rgba(255,143,31,0.35);">
+        <div style="color:#FF8F1F;font-size:12px;font-weight:700;margin-bottom:2px;">${htmlEsc(p.name || 'PERIMETER')}</div>
+        <div style="color:#5C5A54;font-size:8px;letter-spacing:0.14em;margin-bottom:8px;">MAPPED PERIMETER · NIFC/WFIGS${p.state ? ' · ' + htmlEsc(p.state) : ''}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;">
+          <div><span style="color:#5C5A54;">BURNED AREA</span><br/><span style="color:#FF8F1F;font-weight:700;">${Number.isFinite(acres) ? Math.round(acres).toLocaleString('en-US') + ' ac' : '—'}</span></div>
+          <div><span style="color:#5C5A54;">CONTAINED</span><br/><span style="color:#E8E6E0;">${Number.isFinite(cont) ? cont + '%' : '—'}</span></div>
+        </div>
+        <div style="color:#5C5A54;font-size:8px;margin-top:8px;">Agency-surveyed outline, not a live fire edge</div>
       </div>`);
     });
 
@@ -1320,7 +1571,7 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     });
 
     // ── Generic hover for clickables ──
-    ['conflict-icons','cctv-dots','eq-circles','fires-heat','gdelt-dots','weather-dots','infra-dots','maritime-dots','choke-dots','news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots','cyber-heads','gdelt-events-dots','cf-outage-dots','cf-attack-dots'].forEach(layer => {
+    ['conflict-icons','cctv-dots','eq-circles','fires-dots','fire-incident-dots','gdelt-dots','weather-dots','infra-dots','maritime-dots','choke-dots','news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots','cyber-heads','gdelt-events-dots','cf-outage-dots','cf-attack-dots'].forEach(layer => {
       map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
     });
@@ -1982,10 +2233,94 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     setGeo('cctv', activeLayers.cctv && data.cameras ? data.cameras.map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { id: c.id, name: c.name, city: c.city, country: c.country, source: c.source, feed_url: c.feed_url, stream_url: c.stream_url, stream_type: c.stream_type, external_url: c.external_url } })) : []);
   }, [mapReady, data.cameras, activeLayers.cctv, setGeo]);
 
+  /* Weather raster overlays — precipitation radar over cloud imagery.
+     Both are plain raster tile sources, so stepping the radar animation is a
+     setTiles() call rather than a teardown; MapLibre keeps the layer on screen
+     while the new frame's tiles arrive, which is what stops the scrubber from
+     flickering. */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+
+    /* Raster overlays belong under the data layers — a radar sheet painted over
+       the aircraft and fire markers would bury the things the map is for. The
+       first layer drawing from one of the GeoJSON sources marks that boundary. */
+    const beforeId = () => {
+      const owned = new Set(['flights','cctv','fires','earthquakes','satellites','maritime','weather']);
+      // 'source' in l narrows the union: a background layer has none.
+      return map.getStyle().layers.find(l => 'source' in l && typeof l.source === 'string' && owned.has(l.source))?.id;
+    };
+
+    /* maxzoom is the load-bearing argument here. Neither provider errors when
+       asked for a tile past its limit: RainViewer returns 200 with a grey
+       "Zoom Level Not Supported" PNG and GIBS returns 400. Declaring the real
+       ceiling makes MapLibre stop at it and stretch the last good tile instead,
+       so zooming in softens the overlay rather than papering the map with
+       placeholder labels. Verified by fetching tiles directly: RainViewer's
+       512px tiles carry real data only to z7 — z8 and up return the label,
+       which is identical in size at every zoom and is what made an earlier
+       byte-count check read z8 as valid. GIBS Level9 serves
+       to z9 and 400s at z10. */
+    const apply = (
+      id: string,
+      url: string | null,
+      opacity: number,
+      tileSize: number,
+      maxzoom: number,
+    ) => {
+      const existing = map.getSource(id) as maplibregl.RasterTileSource | undefined;
+      if (!url) {
+        if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(id)) map.removeSource(id);
+        return;
+      }
+      if (existing) { existing.setTiles([url]); return; }
+      map.addSource(id, { type: 'raster', tiles: [url], tileSize, maxzoom });
+      map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacity } }, beforeId());
+    };
+
+    // Clouds first so the radar, inserted before the same marker, lands above.
+    apply('wx-clouds', weatherTiles?.clouds ?? null, 0.5, 256, 9);
+    apply('wx-radar', weatherTiles?.radar ?? null, 0.75, 512, 7);
+  }, [mapReady, weatherTiles]);
+
+  // Named fire incidents → GeoJSON
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('fires', activeLayers.fires && data.fires ? data.fires.map((f: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: { brightness: f.brightness } })) : []);
-  }, [mapReady, data.fires, activeLayers.fires, setGeo]);
+    setGeo('fire-incidents', activeLayers.fire_incidents && data.fire_incidents ? data.fire_incidents.map((i: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [i.lng, i.lat] }, properties: { name: i.name, acres: i.acres ?? 0, contained: i.contained, cause: i.cause, state: i.state, county: i.county, personnel: i.personnel, discovered: i.discovered, kind: i.kind, agency: i.agency } })) : []);
+  }, [mapReady, data.fire_incidents, activeLayers.fire_incidents, setGeo]);
+
+  /* Fire perimeters arrive already shaped as a FeatureCollection, so they go
+     straight to the source rather than through setGeo's feature mapping. */
+  useEffect(() => {
+    if (!mapReady) return;
+    const src = mapRef.current?.getSource('fire-perimeters') as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const fc = activeLayers.fire_perimeters && data.fire_perimeters
+      ? data.fire_perimeters
+      : { type: 'FeatureCollection', features: [] };
+    src.setData(fc as never);
+  }, [mapReady, data.fire_perimeters, activeLayers.fire_perimeters]);
+
+  // Broadcast radio → GeoJSON
+  useEffect(() => {
+    if (!mapReady) return;
+    setGeo('radio', activeLayers.radio && data.radio_stations ? data.radio_stations.map((s: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { id: s.id, name: s.name, url: s.url, homepage: s.homepage, country: s.country, state: s.state, codec: s.codec, bitrate: s.bitrate, tags: (s.tags || []).join(','), secure: s.secure } })) : []);
+  }, [mapReady, data.radio_stations, activeLayers.radio, setGeo]);
+
+  // Live TV → GeoJSON (one feature per country)
+  useEffect(() => {
+    if (!mapReady) return;
+    setGeo('tv', activeLayers.tv && data.tv_countries ? data.tv_countries.map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { code: c.code, name: c.name, count: c.count } })) : []);
+  }, [mapReady, data.tv_countries, activeLayers.tv, setGeo]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    setGeo('fires', activeLayers.fires && data.fires ? data.fires.map((f: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [f.lng, f.lat] }, properties: { brightness: f.brightness, frp: typeof f.frp === 'number' ? f.frp : 0, confidence: f.confidence ?? '', date: f.date ?? '', time: f.time ?? '', kind: f.type ?? 'fire', sensor: data.fires_source ?? 'NASA FIRMS' } })) : []);
+    /* The sensor rides on every feature rather than being read from `data` in
+       the click handler: handlers are registered once on load and would close
+       over whatever the value was then. */
+  }, [mapReady, data.fires, data.fires_source, activeLayers.fires, setGeo]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -2149,7 +2484,9 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     setVis(['fl-jets'], activeLayers.jets);
     setVis(['fl-military'], activeLayers.military);
     setVis(['cctv-glow','cctv-dots','cctv-label'], activeLayers.cctv);
-    setVis(['fires-heat'], activeLayers.fires);
+    setVis(['fires-heat','fires-dots'], activeLayers.fires);
+    setVis(['fire-incident-glow','fire-incident-dots','fire-incident-label'], activeLayers.fire_incidents);
+    setVis(['fire-perimeter-fill','fire-perimeter-line'], activeLayers.fire_perimeters);
     setVis(['weather-glow','weather-dots','weather-label'], activeLayers.weather);
     setVis(['infra-glow','infra-dots','infra-label'], activeLayers.infrastructure);
     setVis(['maritime-glow','maritime-dots','maritime-label'], activeLayers.maritime);

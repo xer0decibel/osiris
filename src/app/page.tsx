@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { expandFires } from '@/lib/fires';
+import { writeHomeView } from '@/lib/homeView';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Route, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, Bluetooth, Pentagon, Radio , PenLine } from 'lucide-react';
@@ -29,6 +31,9 @@ const OsirisMap = dynamic(() => import('@/components/OsirisMap'), { ssr: false }
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
 const SpaceCam = dynamic(() => import('@/components/SpaceCam'), { ssr: false });
 const CameraViewer = dynamic(() => import('@/components/CameraViewer'));
+const RadioPlayer = dynamic(() => import('@/components/RadioPlayer'));
+const TvViewer = dynamic(() => import('@/components/TvViewer'));
+const WeatherRadarBar = dynamic(() => import('@/components/WeatherRadarBar'));
 const OsintPanel = dynamic(() => import('@/components/OsintPanel'));
 const DrawingToolbar = dynamic(() => import('@/components/DrawingToolbar'), { ssr: false });
 const DrawHud = dynamic(() => import('@/components/DrawHud'), { ssr: false });
@@ -151,6 +156,11 @@ export default function Dashboard() {
   const autoLocateCancelled = useRef(false);
   const [mapRetry, setMapRetry] = useState(0);
   const [activeCamera, setActiveCamera] = useState<any>(null);
+  const [activeStation, setActiveStation] = useState<any>(null);
+  const [activeTvCountry, setActiveTvCountry] = useState<any>(null);
+  const [wxFrames, setWxFrames] = useState<{ time: number; url: string; forecast: boolean }[]>([]);
+  const [wxCloudUrl, setWxCloudUrl] = useState<string | null>(null);
+  const [wxIndex, setWxIndex] = useState(0);
   const [spaceWeather, setSpaceWeather] = useState<any>(null);
   const [showLayers, setShowLayers] = useState(true);
   const [showMarkets, setShowMarkets] = useState(false);
@@ -305,9 +315,19 @@ export default function Dashboard() {
     cctv: true,
     /* The live preview tiles over the camera dots — see CctvPreviews. */
     cctv_previews: true,
+    /* Off by default. It is 2500 extra dots, and alone among the layers here,
+       switching it on is a thing the operator can hear. */
+    radio: false,
+    /* Off by default for the same reason as radio, and because the marker is a
+       country rather than a transmitter — see /api/tv. */
+    tv: false,
+    wx_radar: false,
+    wx_clouds: false,
     live_news: true,
     earthquakes: true,
     fires: false,
+    fire_incidents: false,
+    fire_perimeters: false,
     weather: false,
     radiation: false,
     infrastructure: false,
@@ -385,6 +405,11 @@ export default function Dashboard() {
           if (!autoLocateCancelled.current && !geoController.signal.aborted && geo.status === 'success' &&
               Number.isFinite(geo.lat) && Number.isFinite(geo.lon) && Math.abs(geo.lat) <= 90 && Math.abs(geo.lon) <= 180) {
             setFlyToLocation({ lat: geo.lat, lng: geo.lon, zoom: 8, ts: Date.now() });
+            /* Remembered so the next load opens here outright. This lookup is
+               skipped once the operator touches anything, and fails whenever
+               /api/geo does — without persisting it, either case means starting
+               somewhere unrelated again. */
+            writeHomeView({ lat: geo.lat, lng: geo.lon, zoom: 8 });
           }
         })
         .catch(() => { /* silent — keep default global view */ });
@@ -488,6 +513,8 @@ export default function Dashboard() {
   // Entity click handler (hoisted from JSX to comply with Rules of Hooks - Fixes #113)
   const handleEntityClick = useCallback((entity: any) => {
     if (entity?.type === 'cctv') setActiveCamera(entity);
+    if (entity?.type === 'radio') setActiveStation(entity);
+    if (entity?.type === 'tv') setActiveTvCountry(entity);
     if (entity?.type === 'live_news' && entity.url) {
       setLiveFeedUrl(entity.url);
       setLiveFeedName(entity.name);
@@ -670,7 +697,12 @@ export default function Dashboard() {
     }
     // Fires
     if (activeLayers.fires && !layerFetchedRef.current.has('fires')) {
-      fetchEndpoint('/api/fires');
+      /* The sensor is reported once for the whole batch, so it is lifted onto
+         its own key rather than left as the generic `source` that every other
+         endpoint also merges into the same object. */
+      /* The route sends column arrays rather than objects — see lib/fires — so
+         the payload is expanded here before anything downstream sees it. */
+      fetchEndpoint('/api/fires', d => ({ fires: expandFires(d), fires_source: d.source }));
       layerFetchedRef.current.add('fires');
     }
     // Maritime
@@ -692,6 +724,29 @@ export default function Dashboard() {
     if (activeLayers.live_news && !layerFetchedRef.current.has('live_news')) {
       fetchEndpoint('/api/live-news', d => ({ live_feeds: d.feeds }));
       layerFetchedRef.current.add('live_news');
+    }
+    // Named fire incidents (NIFC, US only)
+    if (activeLayers.fire_incidents && !layerFetchedRef.current.has('fire_incidents')) {
+      fetchEndpoint('/api/fire-incidents', d => ({ fire_incidents: d.incidents }));
+      layerFetchedRef.current.add('fire_incidents');
+    }
+    // Fire perimeters (NIFC, US only)
+    if (activeLayers.fire_perimeters && !layerFetchedRef.current.has('fire_perimeters')) {
+      fetchEndpoint('/api/fire-perimeters', d => ({ fire_perimeters: d.perimeters }));
+      layerFetchedRef.current.add('fire_perimeters');
+    }
+    // Weather rasters. Not registered in layerFetchedRef: unlike the other
+    // layers this one is genuinely live, so it re-polls while it is switched on.
+    // Radar publishes a new frame every ten minutes.
+    // Live TV
+    if (activeLayers.tv && !layerFetchedRef.current.has('tv')) {
+      fetchEndpoint('/api/tv', d => ({ tv_countries: d.tv_countries }));
+      layerFetchedRef.current.add('tv');
+    }
+    // Broadcast radio
+    if (activeLayers.radio && !layerFetchedRef.current.has('radio')) {
+      fetchEndpoint('/api/radio', d => ({ radio_stations: d.radio_stations }));
+      layerFetchedRef.current.add('radio');
     }
     // Weather
     if (activeLayers.weather && !layerFetchedRef.current.has('weather')) {
@@ -786,6 +841,47 @@ export default function Dashboard() {
     }
     return () => intervals.forEach(clearInterval);
   }, [activeLayers, fetchEndpoint]);
+
+  /* Weather rasters are the one genuinely live layer on the map: RainViewer
+     publishes a new radar frame every ten minutes, so this re-polls while it is
+     switched on rather than fetching once like everything in layerFetchedRef.
+     Nothing is fetched at all until one of the two overlays is enabled. */
+  useEffect(() => {
+    if (!activeLayers.wx_radar && !activeLayers.wx_clouds) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch('/api/weather-radar', { cache: 'no-store' });
+        if (!res.ok || cancelled) return;
+        const d = await res.json();
+        if (cancelled) return;
+        const frames = Array.isArray(d?.radar?.frames) ? d.radar.frames : [];
+        setWxFrames(frames);
+        setWxCloudUrl(d?.clouds?.url ?? null);
+        /* Open on the newest observation. On a refresh the whole window has
+           shifted forward, so an index left pointing past the end is snapped
+           back rather than silently clamping to a frame that no longer exists. */
+        setWxIndex(i => (i === 0 || i >= frames.length ? Math.max(0, frames.length - 1) : i));
+      } catch (e) {
+        console.warn('[OSIRIS] weather raster load failed:', e instanceof Error ? e.message : e);
+      }
+    };
+
+    load();
+    const iv = setInterval(load, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [activeLayers.wx_radar, activeLayers.wx_clouds]);
+
+  /* Memoised because OsirisMap rebuilds its raster sources whenever this prop's
+     identity changes. A fresh object every render would tear the radar down and
+     re-add it on unrelated state changes, which reads as the layer flickering. */
+  const weatherTiles = useMemo(() => ({
+    radar: activeLayers.wx_radar && wxFrames.length
+      ? (wxFrames[Math.min(wxIndex, wxFrames.length - 1)]?.url ?? null)
+      : null,
+    clouds: activeLayers.wx_clouds ? wxCloudUrl : null,
+  }), [activeLayers.wx_radar, activeLayers.wx_clouds, wxFrames, wxIndex, wxCloudUrl]);
 
   /* ── LIVE MALWARE — pushed over SSE while the layer is on ──
      Detections arrive when URLhaus reports them rather than on a timer, so
@@ -1145,6 +1241,7 @@ export default function Dashboard() {
           onRetryMap={() => setMapRetry(retry => retry + 1)}
           data={data} 
           activeLayers={activeLayers} 
+          weatherTiles={weatherTiles}
           projection={mapProjection === 'mercator' ? 'mercator' : 'globe'}
           terrainEnabled={activeLayers.terrain_elevation && mapProjection === 'globe'}
           terrainFocus={terrainFocus}
@@ -1829,6 +1926,25 @@ export default function Dashboard() {
         camera={activeCamera}
         onClose={() => setActiveCamera(null)}
         onLocate={(lat, lng) => setFlyToLocation({ lat, lng, ts: Date.now() })}
+      />
+
+      {/* Broadcast Radio */}
+      <RadioPlayer
+        station={activeStation}
+        onClose={() => setActiveStation(null)}
+        onLocate={(lat, lng) => setFlyToLocation({ lat, lng, zoom: 9, ts: Date.now() })}
+      />
+
+      {/* Precipitation radar timeline */}
+      {activeLayers.wx_radar && wxFrames.length > 0 && (
+        <WeatherRadarBar frames={wxFrames} index={wxIndex} onIndexChange={setWxIndex} />
+      )}
+
+      {/* Live TV */}
+      <TvViewer
+        country={activeTvCountry}
+        onClose={() => setActiveTvCountry(null)}
+        onLocate={(lat, lng) => setFlyToLocation({ lat, lng, zoom: 4, ts: Date.now() })}
       />
 
       {/* ── Entity Graph Panel ── */}

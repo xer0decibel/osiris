@@ -2489,3 +2489,38 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 4px;
   padding: 1px 5px;
 }
+
+/* ── Broadcast radio level meter ───────────────────────────────────────────
+   The bars in RadioPlayer's transport. Animated only while audio is actually
+   arriving, so the meter reads as signal rather than decoration. Each bar sets
+   its own animation-delay inline to stagger the sweep. */
+@keyframes radio-bar {
+  0%, 100% { height: 4px;  opacity: 0.55; }
+  50%      { height: 15px; opacity: 1; }
+}
+
+.radio-bar {
+  animation: radio-bar 900ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radio-bar { animation: none; height: 10px; }
+}
+
+/* ── Draggable panel title bars ────────────────────────────────────────────
+   The grab affordance is scoped to the width at which DraggablePanel actually
+   enables dragging (Tailwind's `md`); below that the panels are full-width
+   sheets and the cursor would be promising something that does not happen.
+   `touch-action: none` is what lets a touch drag reach framer-motion instead
+   of being swallowed as a page scroll. */
+@media (min-width: 768px) {
+  [data-drag-handle] {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  [data-dragging] [data-drag-handle] {
+    cursor: grabbing;
+  }
+}

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plane, Satellite, Sun, AlertTriangle, Camera,
   CloudLightning, Ship, Network, Database, Ghost,
-  Flame, Tv, Radio, Mountain, Anchor, Megaphone, SlidersHorizontal
+  Flame, Tv, Radio, Mountain, Anchor, Megaphone, SlidersHorizontal, CloudRain
 } from 'lucide-react';
 import StyleStudio from './StyleStudio';
 import { TERRAIN_MIN_ZOOM, type TerrainStatus } from '@/lib/map-terrain';
@@ -99,12 +99,39 @@ const LAYER_GROUPS: LayerGroupDef[] = [
     ],
   },
   {
+    label: 'RADIO',
+    fullLabel: 'BROADCAST RADIO',
+    icon: Radio,
+    layers: [
+      { key: 'radio', label: 'Radio Stations', description: 'Live streams by transmitter', dataKey: 'radio_stations' },
+    ],
+  },
+  {
+    label: 'TV',
+    fullLabel: 'BROADCAST TV',
+    icon: Tv,
+    layers: [
+      { key: 'tv', label: 'TV Channels', description: 'Live streams by country', dataKey: 'tv_countries' },
+    ],
+  },
+  {
+    label: 'WX',
+    fullLabel: 'WEATHER IMAGERY',
+    icon: CloudRain,
+    layers: [
+      { key: 'wx_radar', label: 'Precipitation Radar', description: 'Animated · last 2 hours', dataKey: '' },
+      { key: 'wx_clouds', label: 'Cloud Imagery', description: 'VIIRS true colour · daily', dataKey: '' },
+    ],
+  },
+  {
     label: 'HAZARD',
     fullLabel: 'NATURAL HAZARDS',
     icon: CloudLightning,
     layers: [
       { key: 'earthquakes', label: 'Earthquakes', dataKey: 'earthquakes' },
-      { key: 'fires', label: 'Active Fires', dataKey: 'fires' },
+      { key: 'fires', label: 'Active Fires', description: 'NASA FIRMS hotspots · global', dataKey: 'fires' },
+      { key: 'fire_incidents', label: 'Named Incidents', description: 'NIFC acres + containment · US', dataKey: 'fire_incidents' },
+      { key: 'fire_perimeters', label: 'Fire Perimeters', description: 'Mapped burn outline · US', dataKey: '' },
       { key: 'weather', label: 'Severe Weather', dataKey: 'weather_events' },
     ],
   },

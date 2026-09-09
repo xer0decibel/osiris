@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { X, ExternalLink, RefreshCw, MapPin, Camera, CameraOff, Maximize2, PlayCircle } from 'lucide-react';
 import Hls from 'hls.js';
+import DraggablePanel from './DraggablePanel';
 import { isHostedOffPlatform, liveFeedAtSource, localEmbed, needsResolution, offPlatformView } from '@/lib/camera-feed';
 
 interface CameraViewerProps {
@@ -161,11 +162,8 @@ export default function CameraViewer({ camera, onClose, onLocate }: CameraViewer
 
   return (
     <AnimatePresence>
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ duration: 0.3, type: "spring", bounce: 0 }}
+        <DraggablePanel
+          disabled={fullscreen}
           className={`fixed z-[500] ${
             fullscreen 
               ? 'inset-2 md:inset-4' 
@@ -183,7 +181,7 @@ export default function CameraViewer({ camera, onClose, onLocate }: CameraViewer
             {/* Tactical Header */}
             <div className="flex flex-col border-b border-[var(--border-primary)] bg-black/60 relative z-10">
               {/* Top Meta Bar */}
-              <div className="flex items-center justify-between px-3 py-1 border-b border-white/5 text-[9px] font-mono tracking-[0.2em] text-[var(--text-muted)] bg-[var(--hover-accent)]">
+              <div data-drag-handle className="flex items-center justify-between px-3 py-1 border-b border-white/5 text-[9px] font-mono tracking-[0.2em] text-[var(--text-muted)] bg-[var(--hover-accent)]">
                 <div className="flex items-center gap-3">
                   <span className="text-[var(--gold-primary)] font-bold">{camId}</span>
                   <span>{camera.lat?.toFixed(4)}, {camera.lng?.toFixed(4)}</span>
@@ -411,7 +409,7 @@ export default function CameraViewer({ camera, onClose, onLocate }: CameraViewer
             </div>
           </div>
         </div>
-      </motion.div>
+      </DraggablePanel>
     </AnimatePresence>
   );
 }
