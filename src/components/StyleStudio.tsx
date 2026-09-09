@@ -332,13 +332,21 @@ function StyleStudio({ onClose, isMobile }: { onClose: () => void; isMobile?: bo
           <Row label="Info"><Swatch label="Info colour" value={s.alertBlue} onChange={v => set('alertBlue', v)} /></Row>
         </Section>
 
-        <Section title="Map controls">
+        <Section title="Interface">
           <Row label="Pan/zoom pad">
             <Segmented
               label="On-screen pan and zoom pad"
               options={ON_OFF}
               value={s.mapControls ? 'on' : 'off'}
               onChange={v => set('mapControls', v === 'on')}
+            />
+          </Row>
+          <Row label="Bottom ticker">
+            <Segmented
+              label="Status ticker along the bottom"
+              options={ON_OFF}
+              value={s.statusBar ? 'on' : 'off'}
+              onChange={v => set('statusBar', v === 'on')}
             />
           </Row>
         </Section>

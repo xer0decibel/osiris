@@ -56,6 +56,8 @@ export interface StyleSettings {
   grain: number;
   /** The map's on-screen pan/zoom pad. Off leaves the wheel and drag alone. */
   mapControls: boolean;
+  /** The status ticker along the bottom: community links, quakes, markets. */
+  statusBar: boolean;
   /** Colours the map itself draws with — see ./map-palette. */
   map: MapPalette;
 }
@@ -103,6 +105,7 @@ export const DEFAULTS: StyleSettings = {
   vignette: 0,
   grain: 0,
   mapControls: true,
+  statusBar: true,
   map: MAP_DEFAULTS,
 };
 
@@ -206,6 +209,7 @@ export function sanitize(input: unknown, base: StyleSettings): StyleSettings {
     vignette: normNum(o.vignette, base.vignette, 0, 1),
     grain: normNum(o.grain, base.grain, 0, 0.3),
     mapControls: normBool(o.mapControls, base.mapControls),
+    statusBar: normBool(o.statusBar, base.statusBar),
     map: normMap(o.map, base.map),
   };
 }
@@ -306,6 +310,10 @@ ${at} .rounded-full { border-radius: 9999px; }`,
     /* Hidden by rule rather than unmounted: flipping it back on costs no
        remount, and a held button cannot be orphaned mid-press. */
     blocks.push(`${at} [data-map-controls] { display: none !important; }`);
+  }
+
+  if (!s.statusBar) {
+    blocks.push(`${at} [data-status-bar] { display: none !important; }`);
   }
 
   /* Scanlines, vignette and grain share one pseudo-element: a second ::after
