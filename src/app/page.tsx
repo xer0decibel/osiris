@@ -2034,10 +2034,15 @@ export default function Dashboard() {
 
       {/* Scale bar is now integrated into the map controls section above */}
 
-      {/* ── TEMPERATURE SCALE — while the isotherms are on ── */}
+      {/* ── TEMPERATURE SCALE — a window while the isotherms are on; closing it turns them off ── */}
       {activeLayers.wx_temp && !isMobile && (
-        <div className="absolute z-[200] bottom-[132px] pointer-events-none" style={{ left: '120px' }}>
-          <TemperatureLegend unit={tempUnit} onUnit={setTempUnit} time={wxTempGrid?.time ?? null} stations={wxStations.length} note={wxTempNote} source={wxTempSource.source} run={wxTempSource.run} />
+        <div className="absolute z-[200] bottom-[132px] w-[300px]" style={{ left: '120px' }}>
+          <TemperatureLegend
+            className="flex flex-col"
+            unit={tempUnit} onUnit={setTempUnit} time={wxTempGrid?.time ?? null} stations={wxStations.length}
+            note={wxTempNote} source={wxTempSource.source} run={wxTempSource.run}
+            onClose={() => applyLayers(['wx_temp'], false)}
+          />
         </div>
       )}
 
