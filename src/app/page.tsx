@@ -34,7 +34,7 @@ import TemperatureLegend from '@/components/TemperatureLegend';
 import { isothermBands, formatTemp, type TempUnit } from '@/lib/isotherms';
 import { blendWithStations } from '@/lib/temperature-blend';
 import type { Station } from '@/lib/nws-stations';
-import { padBbox, snapBbox, type TempGrid } from '@/lib/temperature-grid';
+import { padBbox, snapBbox, bboxContains, type TempGrid } from '@/lib/temperature-grid';
 import { GFS_MIN_SPAN } from '@/lib/gfs';
 import { NEARBY_CATEGORIES, NEARBY_SETTLE_MS, bboxParam, pickNearby, type NearbyResult } from '@/lib/arcgis-nearby';
 import FloatingWindow, { windowButtonClass, windowIconClass } from '@/components/FloatingWindow';
@@ -979,13 +979,25 @@ export default function Dashboard() {
      provider's budget is spent per point, so a refusal is shown in the
      legend and tried again, rather than swallowed. A view wider than
      GFS_MIN_SPAN takes NOAA's global model instead — one file per run, no
-     per-point budget — with no station blend at that scale. */
+     per-point budget — with no station blend at that scale.
+     The field in hand is held as long as it covers the view with at least
+     TEMP_HOLD_CELLS cells across: zooming in, or panning inside it, changes
+     nothing on screen and asks for nothing. Only leaving it, or zooming in
+     past its detail, fetches. The global model has no budget, so it is
+     asked for soon after the map settles; the points provider waits longer. */
+  const TEMP_HOLD_CELLS = 8;
   const tempBounds = activeLayers.wx_temp ? mapCenter?.bounds ?? null : null;
   const tempPadded = tempBounds ? padBbox([tempBounds.west, tempBounds.south, tempBounds.east, tempBounds.north]) : null;
   const tempGlobal = tempPadded ? Math.max(tempPadded[2] - tempPadded[0], tempPadded[3] - tempPadded[1]) > GFS_MIN_SPAN : false;
   const tempKey = tempPadded ? snapBbox(tempPadded).map(n => n.toFixed(3)).join(',') : null;
   useEffect(() => {
     if (!tempKey) return; // the last field is kept; the layer being off hides it
+    const view = tempKey.split(',').map(Number) as [number, number, number, number];
+    const held = wxTempGrid;
+    if (held && bboxContains(held.bbox, view)) {
+      const cell = Math.max((held.bbox[2] - held.bbox[0]) / (held.cols - 1), (held.bbox[3] - held.bbox[1]) / (held.rows - 1));
+      if (Math.min(view[2] - view[0], view[3] - view[1]) / cell >= TEMP_HOLD_CELLS) return;
+    }
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
@@ -1008,9 +1020,9 @@ export default function Dashboard() {
         const stations = stationRes && stationRes.ok ? ((await stationRes.json()).stations as Station[] | undefined) ?? [] : [];
         if (!cancelled) { setWxTempGrid(grid); setWxStations(stations); setWxTempSource(grid.source === 'gfs' ? { source: 'gfs', run: grid.run ?? null } : { source: 'model', run: null }); }
       } catch { if (!cancelled) setWxTempNote('Field unavailable · offline?'); }
-    }, 1500);
+    }, tempGlobal ? 300 : 1500);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [tempKey, tempGlobal, wxTempRetry]);
+  }, [tempKey, tempGlobal, wxTempRetry, wxTempGrid]);
   /* Upsampled toward ~500 cells across whatever the grid is: six-fold for the
      12-wide local grid, three-fold for the 180-wide globe. */
   const temperatureField = useMemo(
