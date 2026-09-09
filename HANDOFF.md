@@ -135,7 +135,8 @@ The useful half of this document.
   having. `N2YO_API_KEY`, `FIRMS_API_KEY` and `OSIRIS_TELEGRAM_CHANNELS` appear
   only in docs — no route reads them, signing up buys nothing.
 - **Bootable USB appliance.** Live Linux + Kiwix + this dashboard. The offline
-  basemap is step one. See `docs/OFFLINE.md`; the key finding is that the
+  basemap is step one. Packaging list with measured sizes:
+  `docs/USB-APPLIANCE.md`. See also `docs/OFFLINE.md`; the key finding is that the
   existing style is OpenMapTiles schema, so a full-detail archive is a drop-in
   with no restyling.
 - **Commercial use needs a feed audit, not a licence review.** MIT permits
