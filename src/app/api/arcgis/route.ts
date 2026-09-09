@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { rankLocalFirst, describeServiceFailure } from '@/lib/arcgis-rank';
+import { rankLocalFirst, parseBbox, describeServiceFailure } from '@/lib/arcgis-rank';
 
 /**
  * OSIRIS — ArcGIS Public Data Integration
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
       }));
 
       return NextResponse.json(
-        { results: rankLocalFirst(results, Boolean(bbox)) },
+        { results: rankLocalFirst(results, parseBbox(bbox)) },
         {
           headers: {
             'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300',

@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import { describeImport } from '@/lib/arcgis-rank';
 
 /* ═══════════════════════════════════════════════════════════════
    ArcGIS Search & Import Panel — OSIRIS OSINT Dashboard
@@ -106,6 +107,8 @@ export default function ArcGISPanel({
   const [searching, setSearching] = useState(false);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  /* Not an error: the import worked, and what came back needs a sentence. */
+  const [notice, setNotice] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [featureCounts, setFeatureCounts] = useState<Record<string, number>>({});
   const [expandedLayerId, setExpandedLayerId] = useState<string | null>(null);
@@ -153,6 +156,7 @@ export default function ArcGISPanel({
       if (!result.url) return;
       setImportingId(result.id);
       setError('');
+      setNotice('');
 
       try {
         const params = new URLSearchParams({ service: result.url });
@@ -170,6 +174,7 @@ export default function ArcGISPanel({
           (geojson.type === 'FeatureCollection' ? 0 : 1);
 
         setFeatureCounts((prev) => ({ ...prev, [result.id]: count }));
+        setNotice(describeImport(count, Boolean(geojson.properties?.exceededTransferLimit)) ?? '');
         // Assign a color that doesn't overlap with existing layers
         const usedColors = importedLayers.map(l => l.color);
         const availableColor = LAYER_COLORS.find(c => !usedColors.includes(c)) || LAYER_COLORS[importedLayers.length % LAYER_COLORS.length];
@@ -435,6 +440,20 @@ export default function ArcGISPanel({
             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="truncate flex-1">{error}</span>
             <button onClick={() => setError('')} className="p-1 rounded hover:bg-red-500/20 opacity-80 hover:opacity-100">
+              <X className="w-3 h-3" />
+            </button>
+          </motion.div>
+        )}
+        {notice && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex items-center gap-2 p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-[11px] font-mono text-amber-300 shrink-0"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="flex-1 leading-snug">{notice}</span>
+            <button onClick={() => setNotice('')} className="p-1 rounded hover:bg-amber-500/20 opacity-80 hover:opacity-100">
               <X className="w-3 h-3" />
             </button>
           </motion.div>
