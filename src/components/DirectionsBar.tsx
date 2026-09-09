@@ -7,6 +7,7 @@ import {
   LocateFixed, Building2, Landmark, Globe2, Signpost, Home, Crosshair, Clock,
   Plus, Trash2, SlidersHorizontal, Mountain, Navigation, Play,
 } from 'lucide-react';
+import FloatingWindow from './FloatingWindow';
 
 /* ═══════════════════════════════════════════════════════════════
    OSIRIS — Route Planner
@@ -622,30 +623,19 @@ export default function DirectionsBar({ onRoute, onLocate, onClose, center = nul
     : null;
 
   return (
-    <div
-      className="glass-panel instrument-grid instrument-corners relative overflow-hidden flex flex-col max-h-[min(78vh,640px)]"
-      style={{ boxShadow: '0 18px 56px rgba(0,0,0,0.7), 0 0 0 1px rgba(var(--gold-rgb),0.04)' }}
-    >
-      {/* ── header ── */}
-      <header className="relative flex items-center gap-2 px-3 h-10 flex-shrink-0">
-        {/* A lit accent bar reads as an instrument being powered, where a
-            plain heading just reads as a form label. */}
-        <span
-          aria-hidden="true"
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-r"
-          style={{ background: 'var(--gold-primary)', boxShadow: '0 0 8px rgba(var(--gold-rgb),0.6)' }}
-        />
-        <Route className="w-3.5 h-3.5 text-[var(--gold-primary)]" />
-        <h2 className="instrument-title flex-1">Route</h2>
-
-        {/* State at a glance: standby until both ends are set, then the leg. */}
-        <span
-          className="instrument-chip"
-          style={{ color: route ? 'var(--alert-green)' : 'var(--text-muted)' }}
-        >
-          {route ? `${route.steps.length} STEPS` : ready ? 'PLOTTING' : 'STANDBY'}
-        </span>
-
+    <FloatingWindow
+      className="flex flex-col max-h-[min(78vh,640px)]"
+      eyebrow="Route planner"
+      meta={route ? `${route.steps.length} steps` : ready ? 'Plotting' : 'Standby'}
+      icon={Route}
+      title="Route"
+      subtitle={route ? `Via ${route.provider}` : 'Origin and destination'}
+      ariaLabel="Route planner"
+      onClose={onClose}
+      closeLabel="Close directions"
+      bodyClassName="flex flex-col min-h-0"
+      actions={
+        <>
         <button
           onClick={toggleTracking}
           aria-pressed={tracking}
@@ -673,17 +663,9 @@ export default function DirectionsBar({ onRoute, onLocate, onClose, center = nul
             <LocateFixed className="w-3.5 h-3.5" />
           </button>
         )}
-        {onClose && (
-          <button
-            onClick={onClose}
-            aria-label="Close directions"
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors -mr-1 p-1.5"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </header>
-      <div className="instrument-rule flex-shrink-0" />
+        </>
+      }
+    >
 
       {/* ── origin / destination rail ── */}
       <div className="flex items-stretch gap-2.5 px-3 py-2">
@@ -1043,6 +1025,6 @@ export default function DirectionsBar({ onRoute, onLocate, onClose, center = nul
           </>
         )}
       </div>
-    </div>
+    </FloatingWindow>
   );
 }

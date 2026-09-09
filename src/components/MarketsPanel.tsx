@@ -5,10 +5,11 @@ import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  TrendingUp, TrendingDown, ChevronDown, ChevronUp, BarChart3,
+  TrendingUp, TrendingDown, BarChart3,
   Zap, Shield, Droplets, Gem, Bitcoin, LineChart, Maximize2, Minimize2,
   DollarSign, ArrowUpDown, AlertTriangle,
 } from 'lucide-react';
+import FloatingWindow, { windowButtonClass, windowIconClass } from './FloatingWindow';
 import AiOverview from './AiOverview';
 
 // Canvas charting has no business in the server bundle, and it only mounts
@@ -26,7 +27,7 @@ interface Quote {
   market_open?: boolean;
 }
 
-interface MarketsPanelProps { data: any; spaceWeather?: any; }
+interface MarketsPanelProps { data: any; spaceWeather?: any; onClose?: () => void; }
 
 const SECTIONS = [
   { key: 'indices', label: 'INDICES', icon: LineChart },
@@ -124,8 +125,7 @@ function useFeedAge(timestamp?: string): string | null {
   return `${Math.floor(mins / 60)}h ago`;
 }
 
-export default function MarketsPanel({ data, spaceWeather }: MarketsPanelProps) {
-  const [expanded, setExpanded] = useState(true);
+export default function MarketsPanel({ data, spaceWeather, onClose }: MarketsPanelProps) {
   const [maximized, setMaximized] = useState(false);
   const [activeSection, setActiveSection] = useState('stocks');
   const [sortByMove, setSortByMove] = useState(false);
@@ -305,46 +305,30 @@ export default function MarketsPanel({ data, spaceWeather }: MarketsPanelProps) 
     // the element, and when the panel goes fullscreen that transform offsets a
     // `fixed` box away from its inset — the panel was landing 20px off the left
     // edge of the viewport, because the animation had never settled back to 0.
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6, duration: 0.6 }} className={`glass-panel instrument-grid instrument-corners p-3 pointer-events-auto transition-all duration-300 flex flex-col ${
-      // `relative` and `fixed` are both position utilities, so listing them
-      // together lets CSS order decide the winner rather than the state —
-      // which is what stopped the panel going fullscreen.
-      maximized ? 'fixed inset-3 z-[9999] bg-[#0a0a09]/95 backdrop-blur-3xl' : 'relative'
-    }`}>
-      {/* Header controls sit side by side, not nested — a button inside a
-          button is invalid HTML and React fails hydration on it. */}
-      <div className="flex items-center justify-between w-full mb-2">
-        <button onClick={() => setExpanded(!expanded)} className="relative flex items-center gap-2 pl-2">
-          {/* Same lit accent bar as the route planner, so the two panels read
-              as one instrument set rather than two unrelated widgets. */}
-          <span
-            aria-hidden="true"
-            className="absolute left-[-10px] top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-r"
-            style={{ background: 'var(--gold-primary)', boxShadow: '0 0 8px rgba(var(--gold-rgb),0.6)' }}
-          />
-          <BarChart3 className="w-3.5 h-3.5 text-[var(--gold-primary)]" />
-          <span className="instrument-title">Markets &amp; Intel</span>
-          <span className="instrument-chip" style={{ color: 'var(--alert-green)' }}>Live</span>
+    <FloatingWindow
+      className={maximized ? 'fixed inset-3 z-[9999] flex flex-col' : 'w-80 flex flex-col'}
+      disabled={maximized}
+      eyebrow="Markets"
+      meta={age ? `Updated ${age}` : 'Live'}
+      icon={BarChart3}
+      title="Markets & Intel"
+      subtitle="Markets · Space weather · AI"
+      ariaLabel="Markets and intel"
+      onClose={onClose}
+      bodyClassName="flex flex-col p-3"
+      actions={
+        <button onClick={() => setMaximized(!maximized)} className={windowButtonClass} title={maximized ? 'Restore' : 'Full screen'} aria-label={maximized ? 'Restore' : 'Full screen'}>
+          {maximized ? <Minimize2 className={windowIconClass} /> : <Maximize2 className={windowIconClass} />}
         </button>
-        <div className="flex items-center gap-2">
-          {age && <span className="text-[9px] font-mono text-[var(--text-muted)]">{age}</span>}
-          <div className="w-1.5 h-1.5 rounded-full bg-[var(--alert-green)] animate-osiris-pulse" />
-          <button onClick={() => { setMaximized(!maximized); if (!expanded && !maximized) setExpanded(true); }} className="p-1.5 -m-0.5 rounded hover:text-white hover:bg-white/10 transition-colors" title={maximized ? "Restore" : "Maximize"}>
-            {maximized ? <Minimize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" /> : <Maximize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
-          </button>
-          <button onClick={() => setExpanded(!expanded)} title={expanded ? 'Collapse' : 'Expand'}>
-            {expanded ? <ChevronUp className="w-3.5 h-3.5 text-[var(--text-muted)]" /> : <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
-          </button>
-        </div>
-      </div>
-      <div className="instrument-rule mb-2 flex-shrink-0" />
+      }
+    >
 
       {/* Fades rather than animating height. Fullscreen makes this a flex child
           and docked lets it size to content; animating height across that
           switch stranded it at 0 with the content spilling out of the panel.
           The key remounts it per mode so the chart re-measures at the new size. */}
       <AnimatePresence>
-        {expanded && (
+        {(
           <motion.div
             key={maximized ? 'fullscreen' : 'docked'}
             initial={{ opacity: 0 }}
@@ -400,7 +384,7 @@ export default function MarketsPanel({ data, spaceWeather }: MarketsPanelProps) 
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </FloatingWindow>
   );
 
   if (maximized && mounted && typeof document !== 'undefined') {

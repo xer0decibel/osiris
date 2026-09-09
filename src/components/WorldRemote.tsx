@@ -14,6 +14,7 @@ import {
   MapPin, Download, Database, Crosshair, Navigation,
   Wifi, Globe, Target, Activity, Shield
 } from 'lucide-react';
+import FloatingWindow, { windowButtonClass, windowIconClass } from './FloatingWindow';
 
 /* ═══════════════════════════════════════════════════════════════
    M A R A U D E R   V 8
@@ -128,7 +129,6 @@ export default function WorldRemote({onClose,onPlaceOnMap}:{onClose?:()=>void,on
   const [exDev,setExDev]=useState<string|null>(null);
   const [full,setFull]=useState(false);
   const [paused,setPaused]=useState(false);
-  const [expanded,setExpanded]=useState(true);
   const [netIntel,setNetIntel]=useState<NetIntel|null>(null);
   const [netLoading,setNetLoading]=useState(false);
   const [vaultCount,setVaultCount]=useState(0);
@@ -324,39 +324,38 @@ export default function WorldRemote({onClose,onPlaceOnMap}:{onClose?:()=>void,on
      R E N D E R
      ═══════════════════════════════════════════════════════════════ */
   const inner=(
-    <div className={`glass-panel flex flex-col overflow-hidden pointer-events-auto shrink-0 ${full?'w-full h-full':'h-[500px] max-h-[80vh] resize-y'}`}>
-
-      {/* ─── HEADER ─── */}
-      <div className="flex-shrink-0 flex items-center justify-between px-3 py-2.5 border-b border-[rgba(255,255,255,0.05)] bg-[rgba(0,0,0,0.3)] hover:bg-[var(--hover-accent)] transition-colors">
-        <button onClick={()=>setExpanded(!expanded)} className="flex items-center gap-2 flex-1">
-          <Crosshair className="w-3.5 h-3.5 text-[var(--cyan-primary)]"/>
-          <span className="hud-text text-[11px] text-[var(--text-primary)]">MARAUDER</span>
-          <span className="gotham-tag gotham-tag--info" style={{fontSize:'9px',padding:'1px 5px'}}>{devices.length} DEVS</span>
-          {scanning&&<span className="gotham-tag" style={{fontSize:'9px',padding:'1px 5px',background:'rgba(0,230,255,0.1)',color:'var(--cyan-primary)'}}>SCANNING</span>}
-        </button>
-        <div className="flex items-center gap-2">
-          <motion.button whileTap={{scale:0.95}} onClick={scan} disabled={scanning||!btOk}
-            className="px-2.5 py-1 rounded-md text-[9px] font-mono font-bold tracking-wider flex items-center gap-1.5 disabled:opacity-30"
-            style={{background:scanning?'rgba(0,230,255,0.08)':'rgba(0,230,255,0.12)',color:'var(--cyan-primary)',border:'1px solid rgba(0,230,255,0.12)'}}>
-            {scanning?<BluetoothSearching className="w-3 h-3 animate-pulse"/>:<Bluetooth className="w-3 h-3"/>}{scanning?'...':'SCAN'}
-          </motion.button>
-          {geoCount>0&&<motion.button whileTap={{scale:0.95}} onClick={placeOnWorldMap}
-            className="px-2.5 py-1 rounded-md text-[9px] font-mono font-bold tracking-wider flex items-center gap-1.5"
-            style={{background:'rgba(255,183,77,0.08)',color:'#FFB74D',border:'1px solid rgba(255,183,77,0.1)'}}>
-            <MapPin className="w-3 h-3"/>VIEW ON MAP
-          </motion.button>}
-          <button onClick={()=>setFull(!full)} className="p-1.5 -m-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/10 transition-colors" title="Full Screen">
-            {full?<Minimize2 className="w-3.5 h-3.5"/>:<Maximize2 className="w-3.5 h-3.5"/>}
+    <FloatingWindow
+      className={full ? 'w-full h-full flex flex-col' : 'w-80 h-[500px] max-h-[80vh] flex flex-col'}
+      disabled={full}
+      eyebrow="World remote"
+      meta={`${devices.length} devices${scanning ? ' · scanning' : ''}`}
+      icon={Crosshair}
+      title="Marauder"
+      subtitle="Bluetooth reconnaissance"
+      ariaLabel="World remote"
+      onClose={onClose}
+      bodyClassName="flex flex-col"
+      actions={
+        <>
+        <motion.button whileTap={{scale:0.95}} onClick={scan} disabled={scanning||!btOk}
+          className="px-2.5 py-1 rounded-md text-[9px] font-mono font-bold tracking-wider flex items-center gap-1.5 disabled:opacity-30"
+          style={{background:scanning?'rgba(0,230,255,0.08)':'rgba(0,230,255,0.12)',color:'var(--cyan-primary)',border:'1px solid rgba(0,230,255,0.12)'}}>
+          {scanning?<BluetoothSearching className="w-3 h-3 animate-pulse"/>:<Bluetooth className="w-3 h-3"/>}{scanning?'...':'SCAN'}
+        </motion.button>
+        {geoCount>0&&<motion.button whileTap={{scale:0.95}} onClick={placeOnWorldMap}
+          className="px-2.5 py-1 rounded-md text-[9px] font-mono font-bold tracking-wider flex items-center gap-1.5"
+          style={{background:'rgba(255,183,77,0.08)',color:'#FFB74D',border:'1px solid rgba(255,183,77,0.1)'}}>
+          <MapPin className="w-3 h-3"/>VIEW ON MAP
+        </motion.button>}
+          <button onClick={()=>setFull(!full)} className={windowButtonClass} title={full ? 'Restore' : 'Full screen'} aria-label={full ? 'Restore' : 'Full screen'}>
+            {full?<Minimize2 className={windowIconClass}/>:<Maximize2 className={windowIconClass}/>}
           </button>
-          <div className="w-1.5 h-1.5 rounded-full bg-[var(--cyan-primary)] animate-osiris-pulse"/>
-          <button onClick={()=>setExpanded(!expanded)}>
-            {expanded?<ChevronUp className="w-3.5 h-3.5 text-[var(--text-muted)]"/>:<ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]"/>}
-          </button>
-        </div>
-      </div>
+        </>
+      }
+    >
 
       {/* ─── COLLAPSIBLE BODY ─── */}
-      <AnimatePresence>{expanded&&(
+      <AnimatePresence>{(
         <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} transition={{duration:0.2}} className="flex-1 flex flex-col overflow-hidden min-h-0">
 
           {/* Tab Bar */}
@@ -537,7 +536,7 @@ export default function WorldRemote({onClose,onPlaceOnMap}:{onClose?:()=>void,on
           </div>
         </motion.div>
       )}</AnimatePresence>
-    </div>
+    </FloatingWindow>
   );
 
   if(full)return createPortal(<motion.div initial={{opacity:0}} animate={{opacity:1}} className="fixed inset-0 z-[9999] flex" style={{background:'rgba(0,0,0,0.95)',backdropFilter:'blur(12px)'}}><div className="w-full h-full p-4 flex">{inner}</div></motion.div>,document.body);

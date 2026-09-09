@@ -1,6 +1,7 @@
 'use client';
 
-import { ExternalLink, Orbit, Satellite, X } from 'lucide-react';
+import { ExternalLink, Orbit, Satellite } from 'lucide-react';
+import FloatingWindow from './FloatingWindow';
 
 /**
  * OSIRIS — selected satellite readout
@@ -87,34 +88,20 @@ export default function SatelliteCard({ sat, onClose }: { sat: SatelliteDetail; 
   const shell = regime(sat.alt);
 
   return (
-    <div
-      className="pointer-events-auto absolute left-2 right-2 top-16 z-[350] overflow-hidden rounded-lg border bg-[var(--bg-panel)] shadow-[0_6px_20px_rgba(0,0,0,0.45)] backdrop-blur-2xl md:left-[72px] md:right-auto md:top-[88px] md:w-[248px]"
-      style={{ borderColor: `${accent}33` }}
-      role="dialog"
-      aria-label={`Satellite ${sat.name}`}
+    <FloatingWindow
+      className="pointer-events-auto absolute left-2 right-2 top-16 z-[350] flex flex-col md:left-[72px] md:right-auto md:top-[88px] md:w-[248px]"
+      eyebrow="Satellite"
+      meta={shell.label}
+      icon={Satellite}
+      title={sat.name}
+      subtitle={sat.mission || 'Unknown mission'}
+      ariaLabel={`Satellite ${sat.name}`}
+      onClose={onClose}
+      closeLabel="Clear selection (Esc)"
+      bodyClassName="flex flex-col"
     >
       {/* A rule in the satellite's own colour, matching its marker and its track. */}
       <div className="h-px w-full" style={{ background: `${accent}99` }} />
-
-      <div className="flex items-start gap-2 px-2.5 pt-2.5">
-        <Satellite className="mt-[2px] h-3.5 w-3.5 flex-shrink-0" style={{ color: accent }} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] font-bold leading-tight tracking-wide text-[var(--text-heading)]" title={sat.name}>
-            {sat.name}
-          </div>
-          <div className="truncate text-[9px] font-mono tracking-[0.12em] text-[var(--text-secondary)]">
-            {sat.mission || 'Unknown mission'}
-          </div>
-        </div>
-        <button
-          onClick={onClose}
-          className="-mr-1 -mt-1 flex-shrink-0 rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50"
-          aria-label="Clear satellite selection"
-          title="Clear selection (Esc)"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      </div>
 
       <div className="grid grid-cols-2 gap-x-2.5 gap-y-2 px-2.5 py-2.5">
         <Field label="ALTITUDE" value={`${Math.round(sat.alt).toLocaleString()} km`} color="var(--cyan-primary)" />
@@ -153,6 +140,6 @@ export default function SatelliteCard({ sat, onClose }: { sat: SatelliteDetail; 
           TRACK ON N2YO <ExternalLink className="h-2.5 w-2.5" />
         </a>
       )}
-    </div>
+    </FloatingWindow>
   );
 }

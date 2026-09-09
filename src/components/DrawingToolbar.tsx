@@ -10,6 +10,7 @@ import { formatAgo as watchAgo, type WatchEvent } from '@/lib/watch';
 import { contentsToCSV, contentsToGeoJSON, downloadFile } from '@/lib/aoi-export';
 import { FileDown, Table } from 'lucide-react';
 import { Radar, LogIn, LogOut } from 'lucide-react';
+import FloatingWindow from './FloatingWindow';
 
 
 interface DrawingToolbarProps {
@@ -31,6 +32,7 @@ interface DrawingToolbarProps {
   watched?: Set<string>;
   onToggleWatch?: (id: string) => void;
   watchEvents?: WatchEvent[];
+  onClose?: () => void;
 }
 
 /** Calculate area of a GeoJSON polygon in km² using the Shoelace formula on a spheroid */
@@ -108,7 +110,7 @@ const KEY_HINT: Record<DrawMode, string> = {
 export default function DrawingToolbar({
   drawMode, onSetDrawMode, progress, polygons, onDeletePolygon,
   onClearAll, onExportGeoJSON, selectedPolygon, onSelectPolygon,
-  data, onLocateEntity, watched, onToggleWatch, watchEvents = [],
+  data, onLocateEntity, watched, onToggleWatch, watchEvents = [], onClose,
   onRenamePolygon,
 }: DrawingToolbarProps) {
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -157,23 +159,19 @@ export default function DrawingToolbar({
   const totalPerim = polygons.reduce((sum, p) => sum + p.perimeterKm, 0);
 
   return (
-    <div className="pointer-events-auto">
-      <div 
-        className="w-[280px] bg-black/90 backdrop-blur-xl border rounded-lg overflow-hidden flex flex-col glass-panel transition-all duration-500"
-        style={{
-          boxShadow: flash 
-            ? '0 0 20px #00E67666, 0 25px 50px -12px rgba(0,0,0,0.5)' 
-            : '0 25px 50px -12px rgba(0,0,0,0.25)',
-          borderColor: flash ? 'var(--alert-green, #00E676)' : 'rgba(255, 255, 255, 0.06)'
-        }}
-      >
-        {/* Header */}
+    <FloatingWindow
+      className="w-[300px] flex flex-col"
+      style={flash ? { boxShadow: '0 0 20px #00E67666' } : undefined}
+      eyebrow="Drawing"
+      meta={`${polygons.length} AOI${polygons.length === 1 ? '' : 's'}`}
+      icon={Pentagon}
+      title="Drawing tools"
+      subtitle={drawMode ? 'Now click the map' : 'Choose a shape'}
+      ariaLabel="Drawing tools"
+      onClose={onClose}
+      bodyClassName="flex flex-col"
+    >
         <div className="px-4 py-3 border-b border-white/[0.06]">
-          <div className="flex items-center gap-2 mb-2">
-            <Pentagon className="w-3.5 h-3.5 text-[var(--cyan-primary)]" />
-            <span className="text-[12px] font-mono tracking-[0.2em] text-white/90 font-bold">DRAWING TOOLS</span>
-          </div>
-          
           <div className="flex items-center justify-between text-[10px] font-mono text-white/50 bg-white/5 rounded px-2 py-1.5 border border-white/[0.04]">
             <div className="flex flex-col">
               <span className="text-[10px] tracking-wider mb-0.5 uppercase">Tracked Area</span>
@@ -487,7 +485,6 @@ export default function DrawingToolbar({
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </FloatingWindow>
   );
 }

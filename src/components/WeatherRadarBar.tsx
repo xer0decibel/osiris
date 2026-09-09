@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Radar } from 'lucide-react';
+import FloatingWindow from './FloatingWindow';
 
 export interface RadarFrame {
   time: number;
@@ -14,6 +15,8 @@ interface WeatherRadarBarProps {
   frames: RadarFrame[];
   index: number;
   onIndexChange: (i: number) => void;
+  /** Turns the radar layer off; the bar is the layer's only window. */
+  onClose?: () => void;
 }
 
 /** Milliseconds each frame is held during playback. */
@@ -32,7 +35,7 @@ function label(t: number): string {
  * useful thing radar can be: the direction a front is moving is the whole
  * point, and that only exists across frames.
  */
-export default function WeatherRadarBar({ frames, index, onIndexChange }: WeatherRadarBarProps) {
+export default function WeatherRadarBar({ frames, index, onIndexChange, onClose }: WeatherRadarBarProps) {
   const [playing, setPlaying] = useState(true);
   const count = frames.length;
 
@@ -52,17 +55,18 @@ export default function WeatherRadarBar({ frames, index, onIndexChange }: Weathe
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 10 }}
-        transition={{ duration: 0.25 }}
-        className="fixed z-[400] bottom-[58px] left-1/2 -translate-x-1/2 w-[min(92vw,420px)]"
+      <FloatingWindow
+        className="fixed z-[400] bottom-[58px] left-[max(8px,calc(50%-210px))] w-[min(92vw,420px)] flex flex-col"
+        eyebrow="Precipitation radar"
+        meta={`${count} frames`}
+        icon={Radar}
+        title="Radar"
+        subtitle="Last two hours, animated"
+        ariaLabel="Precipitation radar"
+        onClose={onClose}
+        closeLabel="Turn the radar off"
       >
-        <div
-          className="flex items-center gap-3 px-3 py-2 bg-black/85 backdrop-blur-xl border border-[var(--border-primary)]"
-          style={{ boxShadow: '0 12px 32px rgba(0,0,0,0.8)' }}
-        >
+        <div className="flex items-center gap-3 px-3 py-2">
           <button
             onClick={() => setPlaying(p => !p)}
             className="flex items-center justify-center w-7 h-7 rounded-sm border flex-shrink-0 transition-colors hover:bg-[var(--gold-primary)]/10"
@@ -94,7 +98,7 @@ export default function WeatherRadarBar({ frames, index, onIndexChange }: Weathe
             {frame.forecast ? '+' : ''}{label(frame.time)}
           </span>
         </div>
-      </motion.div>
+      </FloatingWindow>
     </AnimatePresence>
   );
 }

@@ -86,6 +86,7 @@ now opens where you are rather than in central Bulgaria.
 | Library updater | `tools/update-kit.mjs` | verified, resumable, never deletes before it swaps |
 | Drive landing page | `usb/START-HERE.html` | one file, no build, works over `file://` |
 | Packaging list | `docs/USB-APPLIANCE.md` | measured sizes, three builds, the three usage modes |
+| One window chrome | `components/FloatingWindow.tsx` | The broadcast viewers' frame — meta bar, title row, cornered icon, actions, ✕, both rows a drag handle over `DraggablePanel` — worn by every floating window: Style Studio, pinned layer groups, Recon, Live From Space, Markets, Live Alerts, ArcGIS, World Remote, Drawing tools, Route planner, Flight watch, Region dossier, Live feed, Satellite card, Radar scrubber. Fullscreen modes keep their own overlays |
 | TV relay, off by default | `lib/tv-relay.ts`, `api/tv/relay` | Pluto refuses browsers on any origin but its own (measured: no CORS on the redirect, `pluto.tv` only behind it). `OSIRIS_TV_RELAY=1` relays those streams through the server; unset, they are not offered. Right wherever server and viewer are the same machine, the drive included; wrong on a hosted instance, which would carry every viewer's stream |
 | Analytics opt-in | `src/middleware.ts` | sends nothing unless `UMAMI_WEBSITE_ID` is set; upstream's site ID is no longer the fallback. Next's own telemetry is disabled on this machine |
 | View toggles | `LayerPanel.tsx`, top of the rail | 3D/2D and MAP/SAT as one button each, showing the current state; replaced the four-segment strip at bottom-left |
@@ -197,6 +198,16 @@ The useful half of this document.
 ---
 
 ## Open threads
+
+- **The window refactor was verified by typecheck, lint and the suite, not by
+  eye.** Fifteen panels moved onto `FloatingWindow` in one sitting while the
+  preview pane was collapsed, so none of them has been looked at since. What
+  to check first: each window's drag and ✕; the collapsed-header controls that
+  became window actions (Recon's full screen, Markets' and Alerts' maximise,
+  Marauder's SCAN); the live feed, which was a modal over a dimmed map and is
+  now a plain window; and the radar scrubber, whose ✕ now turns the layer off.
+  Anything that sat centred with a Tailwind translate was moved to an explicit
+  left, because DraggablePanel's transform overwrites a translate class.
 
 - **Typed commands are wired, with two known edges.** The gazetteer matches
   exact, then prefix, then substring, and has no aliases, so "usa" resolves to

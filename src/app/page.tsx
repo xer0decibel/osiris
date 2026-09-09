@@ -5,7 +5,7 @@ import { expandFires } from '@/lib/fires';
 import { writeHomeView } from '@/lib/homeView';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, BarChart3, Newspaper, Search, X, Route, Radar, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, Bluetooth, Pentagon, Radio , PenLine } from 'lucide-react';
+import { Layers, BarChart3, Newspaper, Search, X, Route, Radar, Plane, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, Bluetooth, Pentagon, Radio , PenLine } from 'lucide-react';
 import { type TerrainStatus } from '@/lib/map-terrain';
 import { loadCameraCatalog, mergeCameraCatalog } from '@/lib/camera-catalog';
 import IntelFeed from '@/components/IntelFeed';
@@ -27,6 +27,7 @@ import GlobalStatusBar from '@/components/GlobalStatusBar';
 import LiveAlerts from '@/components/LiveAlerts';
 import WorldRemote from '@/components/WorldRemote';
 import ArcGISPanel from '@/components/ArcGISPanel';
+import FloatingWindow, { windowButtonClass, windowIconClass } from '@/components/FloatingWindow';
 const OsirisMap = dynamic(() => import('@/components/OsirisMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
 const SpaceCam = dynamic(() => import('@/components/SpaceCam'), { ssr: false });
@@ -1329,10 +1330,21 @@ export default function Dashboard() {
       {watchedFlights.length > 0 && (
         <motion.div
           initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
-          className="absolute top-3 z-[380] w-[min(92vw,290px)] pointer-events-auto
-                     max-h-[calc(100vh-180px)] overflow-y-auto styled-scrollbar"
+          className="absolute top-3 z-[380] w-[min(92vw,290px)] pointer-events-auto"
           style={{ left: isMobile ? '12px' : '120px' }}
         >
+          <FloatingWindow
+            className="flex flex-col"
+            eyebrow="Flight watch"
+            meta={`${watchedFlights.length} aircraft`}
+            icon={Plane}
+            title="Flight watch"
+            subtitle="Watched aircraft"
+            ariaLabel="Flight watch"
+            onClose={() => setWatchedFlights([])}
+            closeLabel="Stop watching all"
+            bodyClassName="overflow-y-auto styled-scrollbar p-2 max-h-[calc(100vh-220px)]"
+          >
           <FlightWatchPanel
             watched={watchedFlights}
             telemetry={watchTelemetry}
@@ -1340,6 +1352,7 @@ export default function Dashboard() {
             onLocate={(lat, lng) => setFlyToLocation({ lat, lng, zoom: 8, ts: Date.now() })}
             onDetail={handleAircraftDetail}
           />
+          </FloatingWindow>
         </motion.div>
       )}
 
@@ -1448,7 +1461,7 @@ export default function Dashboard() {
           <AnimatePresence>
             {showIntel && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80">
-                <OsintPanel onSweepVisualize={setSweepData} onScanGeolocate={(target, data) => {
+                <OsintPanel onClose={() => setShowIntel(false)} onSweepVisualize={setSweepData} onScanGeolocate={(target, data) => {
                   setScanTargets(prev => {
                     const existing = prev.filter(t => t.id !== target);
                     return [{ id: target, timestamp: Date.now(), ...data }, ...existing].slice(0, 10);
@@ -1474,7 +1487,7 @@ export default function Dashboard() {
           <AnimatePresence>
             {showSpaceCam && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80">
-                <SpaceCam />
+                <SpaceCam onClose={() => setShowSpaceCam(false)} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1494,7 +1507,7 @@ export default function Dashboard() {
           <AnimatePresence>
             {showMarkets && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80">
-                <MarketsPanel data={data} spaceWeather={spaceWeather} />
+                <MarketsPanel data={data} spaceWeather={spaceWeather} onClose={() => setShowMarkets(false)} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1514,7 +1527,7 @@ export default function Dashboard() {
           <AnimatePresence>
             {showAlerts && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80">
-                <LiveAlerts data={data} onLocate={(lat, lng) => setFlyToLocation({ lat, lng, ts: Date.now() })} onWatchFeed={(url, name) => { setLiveFeedUrl(url); setLiveFeedName(name); }} />
+                <LiveAlerts data={data} onLocate={(lat, lng) => setFlyToLocation({ lat, lng, ts: Date.now() })} onWatchFeed={(url, name) => { setLiveFeedUrl(url); setLiveFeedName(name); }} onClose={() => setShowAlerts(false)} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1585,7 +1598,17 @@ export default function Dashboard() {
           <AnimatePresence>
             {showArcGIS && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-[340px]">
-                <div className="glass-panel p-3 max-h-[70vh] overflow-y-auto styled-scrollbar">
+                <FloatingWindow
+                  className="w-[340px] max-h-[70vh] flex flex-col"
+                  eyebrow="ArcGIS"
+                  meta={`${arcgisLayers.filter(l => l.visible).length} layers on`}
+                  icon={Database}
+                  title="ArcGIS Intel"
+                  subtitle="Search and import layers"
+                  ariaLabel="ArcGIS"
+                  onClose={() => setShowArcGIS(false)}
+                  bodyClassName="overflow-y-auto styled-scrollbar p-3"
+                >
                   <ArcGISPanel
                     onImportLayer={(layer) => setArcgisLayers(prev => [...prev.filter(l => l.id !== layer.id), { ...layer, color: layer.color || '#D4AF37', visible: true, opacity: layer.opacity ?? 0.8 }])}
                     onRemoveLayer={(id) => setArcgisLayers(prev => prev.filter(l => l.id !== id))}
@@ -1593,7 +1616,7 @@ export default function Dashboard() {
                     importedLayers={arcgisLayers}
                     mapBounds={mapCenter?.bounds || null}
                   />
-                </div>
+                </FloatingWindow>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1638,44 +1661,21 @@ export default function Dashboard() {
       {/* ── LIVE FEED VIEWER OVERLAY ── */}
       <AnimatePresence>
         {liveFeedUrl && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="fixed inset-0 z-[500] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-            onClick={() => setLiveFeedUrl(null)}
+          <FloatingWindow
+            className="fixed z-[500] top-20 left-[max(8px,calc(50%-450px))] w-[min(92vw,900px)] flex flex-col"
+            eyebrow="Live news"
+            meta={liveFeedEmbedAllowed ? 'Live stream' : 'External only'}
+            icon={Newspaper}
+            title={liveFeedName}
+            subtitle="YouTube live"
+            ariaLabel="Live feed"
+            onClose={() => setLiveFeedUrl(null)}
+            actions={
+              <a href={getYouTubeWatchUrl(liveFeedUrl)} target="_blank" rel="noopener noreferrer" className={windowButtonClass} title="Open in YouTube" aria-label="Open in YouTube">
+                <ExternalLink className={windowIconClass} />
+              </a>
+            }
           >
-            <motion.div
-              initial={{ y: 20 }}
-              animate={{ y: 0 }}
-              className="w-[90vw] max-w-[900px] flex flex-col relative rounded-xl overflow-hidden border border-[var(--border-primary)] shadow-2xl bg-black"
-              onClick={e => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-[#111] border-b border-[var(--border-primary)]">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#FF4081] animate-osiris-pulse" />
-                  <span className="text-[11px] font-mono font-bold text-white tracking-wider">{liveFeedName}</span>
-                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-mono text-[10px] font-bold">LIVE STREAM</span>
-                  {!liveFeedEmbedAllowed && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono text-[10px]">EXTERNAL ONLY</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <a
-                    href={getYouTubeWatchUrl(liveFeedUrl)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[var(--border-primary)] hover:bg-[var(--gold-primary)] hover:text-black text-white transition-colors text-[10px] font-mono"
-                  >
-                    <span>Open in YouTube</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                  <button onClick={() => setLiveFeedUrl(null)} className="text-white/70 hover:text-white transition-colors p-1">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
 
               {/* Body — iframe or external card */}
               {liveFeedEmbedAllowed ? (
@@ -1719,8 +1719,7 @@ export default function Dashboard() {
                   </span>
                 </div>
               )}
-            </motion.div>
-          </motion.div>
+          </FloatingWindow>
         )}
       </AnimatePresence>
 
@@ -1867,12 +1866,18 @@ export default function Dashboard() {
 
       {/* ── Region Dossier ── */}
       {(regionDossier || dossierLoading) && (
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="absolute top-16 md:top-20 left-2 right-2 md:left-1/2 md:right-auto md:-translate-x-1/2 z-[300] md:w-[480px] max-h-[65vh] overflow-y-auto styled-scrollbar">
-          <div className="glass-panel p-5 osiris-glow">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-mono font-bold text-[var(--gold-primary)] tracking-wider">REGION DOSSIER</h2>
-              <button onClick={() => { setRegionDossier(null); setDossierLoading(false); }} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs">✕</button>
-            </div>
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="absolute top-16 md:top-20 left-2 right-2 md:left-1/2 md:right-auto md:-translate-x-1/2 z-[300] md:w-[480px]">
+          <FloatingWindow
+            className="flex flex-col"
+            eyebrow="Dossier"
+            meta={dossierLoading ? 'Compiling' : 'Ready'}
+            icon={Crosshair}
+            title="Region dossier"
+            subtitle="Right-click intel"
+            ariaLabel="Region dossier"
+            onClose={() => { setRegionDossier(null); setDossierLoading(false); }}
+            bodyClassName="p-5 overflow-y-auto styled-scrollbar max-h-[65vh]"
+          >
             {dossierLoading ? (
               <div className="text-center py-8">
                 <div className="w-5 h-5 border-2 border-[var(--gold-primary)] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
@@ -1895,7 +1900,7 @@ export default function Dashboard() {
                 {regionDossier.wikipedia && (<div><div className="hud-label mb-1">INTELLIGENCE BRIEF</div><div className="flex gap-3">{regionDossier.wikipedia.thumbnail && <img src={regionDossier.wikipedia.thumbnail} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}<p className="text-[9px] text-[var(--text-secondary)] leading-relaxed">{regionDossier.wikipedia.extract}</p></div></div>)}
               </div>
             )}
-          </div>
+          </FloatingWindow>
         </motion.div>
       )}
 
@@ -1915,7 +1920,7 @@ export default function Dashboard() {
 
       {/* Precipitation radar timeline */}
       {activeLayers.wx_radar && wxFrames.length > 0 && (
-        <WeatherRadarBar frames={wxFrames} index={wxIndex} onIndexChange={setWxIndex} />
+        <WeatherRadarBar frames={wxFrames} index={wxIndex} onIndexChange={setWxIndex} onClose={() => applyLayers(['wx_radar'], false)} />
       )}
 
       {/* Live TV */}
@@ -1955,6 +1960,7 @@ export default function Dashboard() {
             watched={watched}
             onToggleWatch={toggleWatch}
             watchEvents={watchEvents}
+            onClose={() => setShowDrawing(false)}
           />
         </div>
       )}

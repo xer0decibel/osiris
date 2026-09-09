@@ -4,15 +4,17 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronDown, ChevronUp, MapPin, ExternalLink, AlertTriangle,
+  MapPin, AlertTriangle,
   Newspaper, Clock, Radio, Maximize2, Minimize2
 } from 'lucide-react';
+import FloatingWindow, { windowButtonClass, windowIconClass } from './FloatingWindow';
 import AiOverview from './AiOverview';
 
 interface LiveAlertsProps {
   data: any;
   onLocate: (lat: number, lng: number) => void;
   onWatchFeed?: (url: string, name: string) => void;
+  onClose?: () => void;
 }
 
 const RISK_COLORS: Record<string, string> = {
@@ -23,8 +25,7 @@ const RISK_COLORS: Record<string, string> = {
   LOW: '#00E676',
 };
 
-export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsProps) {
-  const [expanded, setExpanded] = useState(true);
+export default function LiveAlerts({ data, onLocate, onWatchFeed, onClose }: LiveAlertsProps) {
   const [maximized, setMaximized] = useState(false);
   const [filter, setFilter] = useState<'all' | 'news' | 'quakes' | 'feeds'>('all');
 
@@ -116,36 +117,26 @@ export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsPr
   useEffect(() => setMounted(true), []);
 
   const content = (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: 0.5, duration: 0.6 }}
-      className={`glass-panel flex flex-col overflow-hidden pointer-events-auto transition-all duration-300 ${maximized ? 'fixed inset-4 z-[9999] bg-[#0a0a09]/95 backdrop-blur-3xl' : 'shrink-0 h-[500px] max-h-[80vh] resize-y'}`}
+    <FloatingWindow
+      className={maximized ? 'fixed inset-4 z-[9999] flex flex-col' : 'w-80 h-[500px] max-h-[80vh] flex flex-col'}
+      disabled={maximized}
+      eyebrow="Alerts"
+      meta={`${alerts.filter(a => a.type === 'news' || a.type === 'quake').length} live · ${BUILTIN_FEEDS.length} feeds`}
+      icon={Radio}
+      title="Live Alerts"
+      subtitle="News · Quakes · Feeds"
+      ariaLabel="Live alerts"
+      onClose={onClose}
+      bodyClassName="flex flex-col"
+      actions={
+        <button onClick={() => setMaximized(!maximized)} className={windowButtonClass} title={maximized ? 'Restore' : 'Full screen'} aria-label={maximized ? 'Restore' : 'Full screen'}>
+          {maximized ? <Minimize2 className={windowIconClass} /> : <Maximize2 className={windowIconClass} />}
+        </button>
+      }
     >
-      {/* Header - Fixed Height, Never Shrinks */}
-      <div
-        onClick={() => setExpanded(!expanded)}
-        role="button"
-        tabIndex={0}
-        className="flex-shrink-0 flex items-center justify-between px-3 py-2 hover:bg-[var(--hover-accent)] transition-colors cursor-pointer outline-none border-b border-[rgba(255,255,255,0.05)] bg-[rgba(0,0,0,0.3)]"
-      >
-        <div className="flex items-center gap-2">
-          <Radio className="w-3.5 h-3.5 text-[#FF4081]" />
-          <span className="hud-text text-[11px] text-[var(--text-primary)]">LIVE ALERTS</span>
-          <span className="gotham-tag gotham-tag--high" style={{ fontSize: '9px', padding: '1px 5px' }}>{alerts.filter(a => a.type === 'news' || a.type === 'quake').length}</span>
-          <span className="gotham-tag gotham-tag--info" style={{ fontSize: '9px', padding: '1px 4px' }}>{BUILTIN_FEEDS.length} FEEDS</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#FF4081] animate-osiris-pulse" />
-          <button onClick={(e) => { e.stopPropagation(); setMaximized(!maximized); if (!expanded && !maximized) setExpanded(true); }} className="p-1.5 -m-0.5 rounded hover:text-white hover:bg-white/10 transition-colors" title={maximized ? "Restore" : "Maximize"}>
-            {maximized ? <Minimize2 className="w-3 h-3 text-[var(--text-muted)]" /> : <Maximize2 className="w-3 h-3 text-[var(--text-muted)]" />}
-          </button>
-          {expanded ? <ChevronUp className="w-3.5 h-3.5 text-[var(--text-muted)]" /> : <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
-        </div>
-      </div>
 
       <AnimatePresence>
-        {expanded && (
+        {(
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -245,7 +236,7 @@ export default function LiveAlerts({ data, onLocate, onWatchFeed }: LiveAlertsPr
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </FloatingWindow>
   );
 
   if (maximized && mounted && typeof document !== 'undefined') {
