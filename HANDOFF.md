@@ -12,9 +12,11 @@ with no network, and started packaging it as a bootable drive.
 situational-awareness map. MIT licensed. Upstream is *active* (commits most
 days), so this diverges further every day it sits.
 
-**State:** 55 commits on branch `feat/intel-layers` across two sessions, **nothing pushed anywhere**.
-`origin` is upstream's repo and is not writable by us. Committer identity is set
-repo-locally to `xer0decibel <xer0decibel@protonmail.com>`.
+**State:** 78 commits on branch `feat/intel-layers` across three sessions, **pushed to
+the user's fork** at github.com/xer0decibel/osiris (`origin`); the author's repo is
+`upstream`. Committer identity is set repo-locally to
+`xer0decibel <xer0decibel@protonmail.com>`. Pushes authenticate through Git
+Credential Manager's browser sign-in; no token is stored anywhere.
 
 **Source of truth for each part:**
 - `docs/OFFLINE.md` — the offline basemap, and the path to street-level tiles
@@ -284,8 +286,10 @@ The useful half of this document.
   quoting, never answering from its own weights. A 3B model inventing a drug
   dosage on a survival drive is the one failure here that actually hurts someone.
 
-- **Nothing is pushed.** Needs a fork or a new repo (see the session notes) and
-  a Personal Access Token — GitHub no longer takes passwords over HTTPS.
+- **The fork exists and the branch is on it** (2026-09-09, evening). The
+  conversation with the author has not happened yet; the user intends to
+  contribute the general fixes upstream and to carry the rest as a renamed,
+  still-open fork. Open the conversation before the first PR, not with it.
 - **The fires fix deserves its own upstream PR.** 3 files, 292 lines, a real bug
   with hard numbers, and it helps every existing user. Best first contribution;
   much better odds than one 2,585-line PR of seven features.
@@ -322,7 +326,7 @@ The useful half of this document.
 **no worse** on every upstream file touched: `page.tsx` 94, `OsirisMap.tsx`
 147, `LayerPanel.tsx` 8 (down from 9), `ArcGISPanel.tsx` 6 — the check to
 repeat after touching any of them. Working tree clean, 78 commits on
-`feat/intel-layers`, nothing pushed. `npm run dev` on :3000.
+`feat/intel-layers`, pushed to the fork. `npm run dev` on :3000.
 
 The commit chain that worked, for the next session to copy: `cd` into the
 repo first; run the patch script and capture its exit code directly, not
