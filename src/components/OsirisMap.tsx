@@ -229,8 +229,8 @@ function OsirisMap({
    * the way the black-ringed dots did. Calling it again with another colour
    * redraws the image in place, which is how the palette recolours cameras.
    */
-  const createGlyph = useCallback((map: maplibregl.Map, id: string, glyph: MapGlyph, color: string) => {
-    const size = GLYPH_PX * GLYPH_RATIO;
+  const createGlyph = useCallback((map: maplibregl.Map, id: string, glyph: MapGlyph, color: string, px = GLYPH_PX) => {
+    const size = px * GLYPH_RATIO;
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext('2d')!;
@@ -401,7 +401,13 @@ function OsirisMap({
       createGlyph(map, 'glyph-flame-mid', FLAME_GLYPH, '#FF6D00');
       createGlyph(map, 'glyph-flame-high', FLAME_GLYPH, '#D32F2F');
       createGlyph(map, 'glyph-radio', RADIO_GLYPH, radioColor);
-      createGlyph(map, 'glyph-tv', TV_GLYPH, tvColor);
+      // A TV marker stands for a whole country, so it is drawn at three times
+      // the size — rasterised larger, not scaled up, so it stays crisp.
+      createGlyph(map, 'glyph-tv', TV_GLYPH, tvColor, GLYPH_PX * 3);
+      // Named incidents: flames in the containment colours the dots used.
+      createGlyph(map, 'glyph-flame-open', FLAME_GLYPH, '#FF1744');
+      createGlyph(map, 'glyph-flame-held', FLAME_GLYPH, '#FFB300');
+      createGlyph(map, 'glyph-flame-out', FLAME_GLYPH, '#26A69A');
 
       const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'malware-new', 'network-mesh', 'cyber-arcs', 'cyber-heads', 'cyber-impacts', 'gdelt-events', 'cf-outages', 'cf-attacks', 'radio', 'tv', 'fire-incidents', 'fire-perimeters'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
@@ -503,13 +509,13 @@ function OsirisMap({
           11, ['*', ['sqrt', ['max', ['get','acres'], 1]], 0.2]],
         'circle-color': '#FF3B30', 'circle-opacity': 0.16, 'circle-blur': 0.7,
       }});
-      map.addLayer({ id: 'fire-incident-dots', type: 'circle', source: 'fire-incidents', paint: {
-        'circle-radius': ['interpolate',['linear'],['zoom'], 3,3.5, 7,5.5, 12,8],
-        'circle-color': ['interpolate',['linear'],['coalesce',['get','contained'],0],
-          0,'#FF1744', 50,'#FFB300', 100,'#26A69A'],
-        'circle-opacity': 0.95,
-        'circle-stroke-width': 1.5, 'circle-stroke-color': '#000000', 'circle-stroke-opacity': 0.8,
-      }});
+      map.addLayer({ id: 'fire-incident-dots', type: 'symbol', source: 'fire-incidents', layout: {
+        // Red until half contained, amber until fully, then the green of a fire
+        // that is out — the same three colours the dot's ramp ran through.
+        'icon-image': ['step', ['coalesce',['get','contained'],0], 'glyph-flame-open', 50, 'glyph-flame-held', 100, 'glyph-flame-out'],
+        'icon-size': ['interpolate',['linear'],['zoom'], 3,0.45, 7,0.65, 12,0.95],
+        'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
+      }, paint: { 'icon-opacity': 0.95 }});
       map.addLayer({ id: 'fire-incident-label', type: 'symbol', source: 'fire-incidents', minzoom: 6, layout: {
         'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
         'text-offset': [0, 1.5], 'text-max-width': 14, 'text-allow-overlap': false,
