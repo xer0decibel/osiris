@@ -368,7 +368,8 @@ lint clean on every file added here, and **no worse** on every upstream file
 touched: `page.tsx` 94, `OsirisMap.tsx` 146 (down from 147), `LayerPanel.tsx`
 8, `ArcGISPanel.tsx` 6 — the check to repeat after touching any of them.
 Working tree clean. `feat/intel-layers` is 82 commits ahead of upstream's
-master and 0 behind, pushed to the fork (`origin`); upstream's master is
+master and 0 behind, pushed to the fork (`origin`), where it is the default
+branch so the fork's front page shows this work; upstream's master is
 `upstream`. PR #333 (the FIRMS fix) is open on upstream from the
 `fix/firms-sampling` branch in the worktree `../osiris-pr`. `npm run dev` on
 :3000, from the repo directory.
