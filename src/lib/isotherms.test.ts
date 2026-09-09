@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cToF, formatTemp, tempColor, tempColorExpression, upsample, bandThresholds, isothermBands, bandPolygons, ringArea, pointInRing, TEMP_STOPS, type Ring } from './isotherms';
+import { cToF, formatTemp, tempColor, tempColorExpression, upsample, bandThresholds, isothermBands, bandPolygons, ringArea, pointInRing, interiorPoint, TEMP_STOPS, type Ring } from './isotherms';
 import type { TempGrid } from './temperature-grid';
 
 // A 4x3 field warming from west to east: 10..16 across, flat north-south.
@@ -63,9 +63,11 @@ describe('field to bands', () => {
         expect(lat).toBeGreaterThanOrEqual(42); expect(lat).toBeLessThanOrEqual(49);
       }
     }
-    // The 16°C band, the hottest, must sit further east than the 12°C band.
+    // The 14°C band must sit further east than the 12°C band. (16°C is the
+    // field's maximum, reached only on the east edge: a band of no area, dropped.)
     const west = (t: number) => Math.min(...fc.features.find(f => f.properties.t === t)!.geometry.coordinates.flat(2).map(p => p[0]));
-    expect(west(16)).toBeGreaterThan(west(12));
+    expect(west(14)).toBeGreaterThan(west(12));
+    expect(fc.features.some(f => f.properties.t === 16)).toBe(false);
   });
 
   it('cuts the next region out of each, so the bands tile the extent without overlap', () => {
@@ -93,6 +95,22 @@ describe('field to bands', () => {
     const within = (pt: [number, number]) => bands.filter(f => (f.geometry.coordinates as Ring[][]).some(poly => pointInRing(pt, poly[0]) && !poly.slice(1).some(h => pointInRing(pt, h))));
     expect(within([5, 5]).map(f => f.properties.t)).toEqual([20]);
     expect(within([0.5, 0.5]).map(f => f.properties.t)).toEqual([0]);
+  });
+
+  it('places a ring by a point inside it, not by a vertex that may touch a neighbour', () => {
+    const square = (x0: number, y0: number, x1: number, y1: number): Ring => [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+    const p = interiorPoint(square(0, 0, 10, 10));
+    expect(pointInRing(p, square(0, 0, 10, 10))).toBe(true);
+    expect(pointInRing(interiorPoint([...square(0, 0, 10, 10)].reverse()), square(0, 0, 10, 10))).toBe(true);
+    // Two hot blocks touching at a corner: the second's first vertex lies on the first's boundary.
+    const lower: Ring[][] = [[square(0, 0, 10, 10)]];
+    const upper: Ring[][] = [[square(2, 2, 5, 5)], [square(5, 5, 8, 8)]];
+    const band = bandPolygons(lower, upper);
+    expect(band).toHaveLength(1);
+    expect(band[0]).toHaveLength(3); // the plain with both blocks cut out, neither mistaken for a hole of the other
+    // A ring rounding collapsed to a line is dropped rather than handed to the tessellator.
+    const flat: Ring = [[3, 3], [4, 3], [5, 3], [3, 3]];
+    expect(bandPolygons(lower, [[flat]])).toEqual([[square(0, 0, 10, 10)]]);
   });
 
   it('keeps a cool island inside a hot region in the cool band', () => {

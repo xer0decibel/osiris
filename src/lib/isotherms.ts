@@ -95,7 +95,7 @@ export type Ring = [number, number][];
 /** Shoelace, signed: positive is counter-clockwise in an x-right, y-up frame such as lng/lat. */
 export function ringArea(ring: Ring): number {
   let a = 0;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
   return a / 2;
 }
 
@@ -114,6 +114,26 @@ function oriented(ring: Ring, outer: boolean): Ring {
 }
 
 /**
+ * A point just inside a ring: the midpoint of its first real edge, nudged
+ * inward by the ring's orientation. A vertex will not do — contour rings
+ * touch at saddle points and run together along the extent's edge, and a
+ * vertex lying on another ring's boundary answers either way. One such
+ * answer put a hole outside its outer ring, and the tessellator drew the
+ * mistake as a dark wedge across a continent.
+ */
+export function interiorPoint(ring: Ring): [number, number] {
+  const ccw = ringArea(ring) > 0;
+  for (let i = 0; i + 1 < ring.length; i++) {
+    const [x0, y0] = ring[i], [x1, y1] = ring[i + 1];
+    const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
+    if (len < 1e-9) continue;
+    const nx = (ccw ? -dy : dy) / len, ny = (ccw ? dx : -dx) / len;
+    return [(x0 + x1) / 2 + nx * 1e-5, (y0 + y1) / 2 + ny * 1e-5];
+  }
+  return ring[0];
+}
+
+/**
  * The region at or above one threshold minus the region at or above the
  * next: polygons with holes that cover exactly the band between them.
  *
@@ -125,24 +145,25 @@ function oriented(ring: Ring, outer: boolean): Ring {
  * Outer rings come out counter-clockwise and holes clockwise.
  */
 export function bandPolygons(lower: Ring[][], upper: Ring[][]): Ring[][] {
-  interface Node { ring: Ring; size: number; lower: boolean; box: [number, number, number, number] }
+  interface Node { ring: Ring; size: number; lower: boolean; box: [number, number, number, number]; inside: [number, number] }
   const node = (ring: Ring, isLower: boolean): Node => {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of ring) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    return { ring, size: Math.abs(ringArea(ring)), lower: isLower, box: [x0, y0, x1, y1] };
+    return { ring, size: Math.abs(ringArea(ring)), lower: isLower, box: [x0, y0, x1, y1], inside: interiorPoint(ring) };
   };
   const rings: Node[] = [];
-  for (const poly of lower) for (const ring of poly) rings.push(node(ring, true));
-  for (const poly of upper) for (const ring of poly) rings.push(node(ring, false));
+  // Rings that rounding collapsed to nothing are dropped: invisible, and a trap for the tessellator.
+  for (const poly of lower) for (const ring of poly) { const n = node(ring, true); if (n.size > 1e-10) rings.push(n); }
+  for (const poly of upper) for (const ring of poly) { const n = node(ring, false); if (n.size > 1e-10) rings.push(n); }
   // Most rings are small and far apart, so the box test settles nearly every pair.
   const parent = rings.map((r, i) => {
-    const [px, py] = r.ring[0];
+    const [px, py] = r.inside;
     let best = -1;
     for (let j = 0; j < rings.length; j++) {
       const c = rings[j];
       if (j === i || c.size <= r.size || (best >= 0 && c.size >= rings[best].size)) continue;
       if (px < c.box[0] || px > c.box[2] || py < c.box[1] || py > c.box[3]) continue;
-      if (pointInRing(r.ring[0], c.ring)) best = j;
+      if (pointInRing(r.inside, c.ring)) best = j;
     }
     return best;
   });
