@@ -121,6 +121,19 @@ const CCTV_GLYPH: MapGlyph = { paths: [
   'M7 9h.01',
 ] };
 const FLAME_GLYPH: MapGlyph = { paths: ['M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4'], fill: true };
+/* Broadcast: lucide `radio` (a dot inside two pairs of arcs) and `tv`. The
+   circle and rect are written out as path commands, which is all Path2D takes. */
+const RADIO_GLYPH: MapGlyph = { paths: [
+  'M16.247 7.761a6 6 0 0 1 0 8.478',
+  'M19.075 4.933a10 10 0 0 1 0 14.134',
+  'M4.925 19.067a10 10 0 0 1 0-14.134',
+  'M7.753 16.239a6 6 0 0 1 0-8.478',
+  'M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0',
+] };
+const TV_GLYPH: MapGlyph = { paths: [
+  'm17 2-5 5-5-5',
+  'M4 7h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z',
+] };
 /** Logical size of a glyph at icon-size 1, and the pixel ratio it is drawn at. */
 const GLYPH_PX = 32;
 const GLYPH_RATIO = 2;
@@ -387,6 +400,8 @@ function OsirisMap({
       createGlyph(map, 'glyph-flame-low', FLAME_GLYPH, '#FFC107');
       createGlyph(map, 'glyph-flame-mid', FLAME_GLYPH, '#FF6D00');
       createGlyph(map, 'glyph-flame-high', FLAME_GLYPH, '#D32F2F');
+      createGlyph(map, 'glyph-radio', RADIO_GLYPH, radioColor);
+      createGlyph(map, 'glyph-tv', TV_GLYPH, tvColor);
 
       const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'malware-new', 'network-mesh', 'cyber-arcs', 'cyber-heads', 'cyber-impacts', 'gdelt-events', 'cf-outages', 'cf-attacks', 'radio', 'tv', 'fire-incidents', 'fire-perimeters'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
@@ -533,13 +548,13 @@ function OsirisMap({
         'circle-radius': ['interpolate',['linear'],['zoom'], 1,4, 5,7, 10,12, 14,18],
         'circle-color': radioColor, 'circle-opacity': 0.18, 'circle-blur': 1,
       }});
-      // RADIO — main dot. Smaller than the camera dot: there are an order of
+      // RADIO — radio glyph. Smaller than the camera: there are an order of
       // magnitude more of them and they cluster hard over cities.
-      map.addLayer({ id: 'radio-dots', type: 'circle', source: 'radio', paint: {
-        'circle-radius': ['interpolate',['linear'],['zoom'], 1,2.5, 5,4, 10,7, 14,10],
-        'circle-color': radioColor, 'circle-opacity': 0.9,
-        'circle-stroke-width': 1.5, 'circle-stroke-color': '#000000', 'circle-stroke-opacity': 0.85,
-      }});
+      map.addLayer({ id: 'radio-dots', type: 'symbol', source: 'radio', layout: {
+        'icon-image': 'glyph-radio',
+        'icon-size': ['interpolate',['linear'],['zoom'], 1,0.2, 5,0.3, 10,0.55, 14,0.8],
+        'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
+      }, paint: { 'icon-opacity': 0.95 }});
       // RADIO — labels at zoom 9+
       map.addLayer({ id: 'radio-label', type: 'symbol', source: 'radio', minzoom: 9, layout: {
         'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
@@ -560,11 +575,11 @@ function OsirisMap({
           10, ['*', ['sqrt', ['get', 'count']], 1.8]],
         'circle-color': tvColor, 'circle-opacity': 0.14, 'circle-blur': 0.9,
       }});
-      map.addLayer({ id: 'tv-dots', type: 'circle', source: 'tv', paint: {
-        'circle-radius': ['interpolate',['linear'],['zoom'], 1,4, 5,6, 10,9],
-        'circle-color': tvColor, 'circle-opacity': 0.9,
-        'circle-stroke-width': 2, 'circle-stroke-color': '#000000', 'circle-stroke-opacity': 0.85,
-      }});
+      map.addLayer({ id: 'tv-dots', type: 'symbol', source: 'tv', layout: {
+        'icon-image': 'glyph-tv',
+        'icon-size': ['interpolate',['linear'],['zoom'], 1,0.3, 5,0.45, 10,0.7],
+        'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
+      }, paint: { 'icon-opacity': 0.95 }});
       map.addLayer({ id: 'tv-label', type: 'symbol', source: 'tv', minzoom: 3, layout: {
         'text-field': ['concat', ['get','name'], '  ', ['to-string', ['get','count']]],
         'text-size': 9, 'text-font': ['Open Sans Regular'],
@@ -723,10 +738,14 @@ function OsirisMap({
         'circle-opacity': 0.75,
         'circle-stroke-width': 1.5, 'circle-stroke-color': '#7E57C2', 'circle-stroke-opacity': 0.35,
       }});
-      map.addLayer({ id: 'weather-label', type: 'symbol', source: 'weather', layout: {
-        'text-field': ['get','title'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
-        'text-offset': [0, 2], 'text-max-width': 14, 'text-allow-overlap': false,
-      }, paint: { 'text-color': '#7E57C2', 'text-halo-color': '#000', 'text-halo-width': 1, 'text-opacity': 0.8 }});
+      /* The label is the kind of event — "Flood Warning", "Tropical Cyclone" —
+         not its headline. The headline is a paragraph, and a paragraph in dim
+         violet over a dark map cannot be read; it belongs in the popup, which
+         already shows it in full on click. Lighter violet, heavier halo. */
+      map.addLayer({ id: 'weather-label', type: 'symbol', source: 'weather', minzoom: 2, layout: {
+        'text-field': ['coalesce', ['get','type'], ['get','title']], 'text-size': 10, 'text-font': ['Open Sans Regular'],
+        'text-offset': [0, 1.8], 'text-max-width': 10, 'text-allow-overlap': false,
+      }, paint: { 'text-color': '#D1C4E9', 'text-halo-color': '#000000', 'text-halo-width': 1.5, 'text-opacity': 0.95 }});
 
       // Nuclear Infrastructure — teal / amber risk
       map.addLayer({ id: 'infra-glow', type: 'circle', source: 'infrastructure', paint: {
