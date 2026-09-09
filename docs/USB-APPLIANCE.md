@@ -127,6 +127,10 @@ Roughly in order of how much thinking each needs:
    `OSIRIS_BASEMAP=offline` in the image's environment. Read on every request, so
    the same image flips without rebuilding; a human can still override per-tab
    with `?basemap=online`.
+   `OSIRIS_TV_RELAY=1` can go in the same environment: on the drive the server
+   and the viewer are the same laptop, so relaying Pluto TV through it costs
+   nobody else anything. Leave it unset only on a hosted, shared instance. See
+   `.env.example`.
 2. ~~A landing page.~~ **Done** — `usb/START-HERE.html`. One self-contained file,
    no build step, no external anything; works over `file://` on a dead network.
    It adapts to where it is opened: one run command on a desktop, and on a phone

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cachedSource } from '@/lib/sourceCache';
 import { httpJson } from '@/lib/httpJson';
+import { isRelayHost, relayEnabled, relayUrl } from '@/lib/tv-relay';
 import { centroidFor } from '@/lib/countryCentroids';
 
 /**
@@ -107,6 +108,9 @@ async function getJson<T>(url: string, attempt = 0): Promise<T[]> {
  *   no centroid   the country is outside the centroid table, so it cannot be placed
  *   custom headers  the stream demands a User-Agent or Referer that a <video>
  *                   element cannot set, so it will 403 in any browser
+ *   CORS-locked   Pluto and its redirector answer no origin but pluto.tv, so
+ *                 hls.js cannot fetch them; offered only through the relay,
+ *                 and only when a deployment has switched that on
  */
 async function buildIndex(): Promise<TvChannel[]> {
   /* Sequential on purpose. Run in parallel these are two large transfers
@@ -126,6 +130,13 @@ async function buildIndex(): Promise<TvChannel[]> {
     if (!s.url || !s.url.startsWith('https://')) continue;
     if (s.user_agent || s.referrer) continue;
     if (!s.channel) continue;
+    /* See lib/tv-relay. Off, these are not offered at all rather than offered
+       dead; on, the browser fetches them from this origin. */
+    let url = s.url;
+    if (isRelayHost(url)) {
+      if (!relayEnabled()) continue;
+      url = relayUrl(url);
+    }
 
     const c = byId.get(s.channel);
     if (!c || !c.id || c.closed || c.is_nsfw) continue;
@@ -142,7 +153,7 @@ async function buildIndex(): Promise<TvChannel[]> {
       network: (c.network || '').trim(),
       country: c.country,
       categories: Array.isArray(c.categories) ? c.categories.slice(0, 4) : [],
-      url: s.url,
+      url,
       quality: (s.quality || '').trim(),
       website: (c.website || '').trim(),
     });
