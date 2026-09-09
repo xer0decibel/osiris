@@ -988,10 +988,12 @@ export default function Dashboard() {
         ]);
         if (cancelled) return;
         if (!fieldRes.ok) {
-          const body = (await fieldRes.json().catch(() => ({}))) as { error?: string; retryAfterMs?: number };
+          const body = (await fieldRes.json().catch(() => ({}))) as { error?: string; reason?: string; retryAfterMs?: number; resumesAt?: string };
           const limited = fieldRes.status === 503 || /429/.test(body.error ?? '');
-          setWxTempNote(limited ? 'Provider busy · retrying' : `Field unavailable · ${body.error ?? fieldRes.status}`);
-          setTimeout(() => { if (!cancelled) setWxTempRetry(n => n + 1); }, Math.min(60000, Math.max(5000, body.retryAfterMs ?? 15000)));
+          const limit = /daily/i.test(body.reason ?? '') ? 'daily' : /hourly/i.test(body.reason ?? '') ? 'hourly' : '';
+          const back = body.resumesAt && limit ? ` · back ${new Date(body.resumesAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+          setWxTempNote(limited ? `Provider ${limit ? `${limit} limit` : 'busy'}${back || ' · retrying'}` : `Field unavailable · ${body.error ?? fieldRes.status}`);
+          setTimeout(() => { if (!cancelled) setWxTempRetry(n => n + 1); }, Math.min(15 * 60000, Math.max(5000, body.retryAfterMs ?? 15000)));
           return;
         }
         setWxTempNote(null);

@@ -18,6 +18,18 @@ import type { Readable } from 'stream';
 
 export const OSIRIS_UA = 'OSIRIS-OSINT/1.0 (+https://github.com/simplifaisoul/osiris)';
 
+/**
+ * A 4xx/5xx answer. The message stays `HTTP <status>` — callers match on it —
+ * and the first kilobyte of the body rides along, because upstreams put the
+ * useful part there: Open-Meteo's 429 says which limit (minute, hour, day).
+ */
+export class HttpError extends Error {
+  constructor(public readonly status: number, public readonly body: string) {
+    super(`HTTP ${status}`);
+    this.name = 'HttpError';
+  }
+}
+
 export interface RequestOptions {
   timeoutMs?: number;
   headers?: Record<string, string>;
@@ -48,11 +60,6 @@ function request(url: string, { timeoutMs = 20000, headers = {} }: RequestOption
       (res) => {
         const status = res.statusCode ?? 0;
 
-        if (status >= 400) {
-          res.resume();
-          reject(new Error(`HTTP ${status}`));
-          return;
-        }
 
         // 304 carries no body, and no content-encoding to decode.
         if (status === 304) {
@@ -74,7 +81,10 @@ function request(url: string, { timeoutMs = 20000, headers = {} }: RequestOption
         stream.setEncoding('utf8');
         stream.on('data', (chunk: string) => { body += chunk; });
         stream.on('error', reject);
-        stream.on('end', () => resolve({ status, headers: res.headers, body }));
+        stream.on('end', () => {
+          if (status >= 400) reject(new HttpError(status, body.slice(0, 1024)));
+          else resolve({ status, headers: res.headers, body });
+        });
       },
     );
     req.on('timeout', () => req.destroy(new Error('Upstream timed out')));

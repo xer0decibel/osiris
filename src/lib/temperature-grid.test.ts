@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBbox, padBbox, gridPoints, openMeteoUrl, readOpenMeteo, snapBbox, bboxContains, GRID_COLS, GRID_ROWS } from './temperature-grid';
+import { parseBbox, padBbox, gridPoints, openMeteoUrl, readOpenMeteo, snapBbox, bboxContains, cooldownFor, GRID_COLS, GRID_ROWS } from './temperature-grid';
 
 describe('the request budget', () => {
   it('keeps a grid under a hundred points', () => {
@@ -10,6 +10,14 @@ describe('the request budget', () => {
     expect(snapBbox([-122.52, 45.44, -122.16, 45.6])).toEqual([-122.75, 45.25, -122, 45.75]);
     expect(snapBbox([-122.51, 45.41, -122.2, 45.62])).toEqual([-122.75, 45.25, -122, 45.75]); // a small pan, same field
     expect(snapBbox([-130, 40, -110, 50])).toEqual([-130, 40, -110, 50]);                    // a wide view, whole degrees
+  });
+
+  it('sits out until the limit the provider named resets', () => {
+    const at = Date.UTC(2026, 8, 9, 17, 43, 0); // 17:43Z
+    expect(cooldownFor('Minutely API request limit exceeded.', at, 90_000)).toBe(90_000);
+    expect(cooldownFor('Hourly API request limit exceeded. Please try again in the next hour.', at, 90_000)).toBe(17 * 60_000 + 30_000);
+    expect(cooldownFor('Daily API request limit exceeded.', at, 90_000)).toBe((6 * 60 + 17) * 60_000 + 30_000);
+    expect(cooldownFor('', at, 90_000)).toBe(90_000);
   });
 
   it('knows when a cached field covers a request', () => {

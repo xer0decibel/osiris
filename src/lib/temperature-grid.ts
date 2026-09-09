@@ -47,6 +47,18 @@ export function snapBbox(b: Bbox): Bbox {
   return [Math.max(-180, down(b[0])), Math.max(-85, down(b[1])), Math.min(180, up(b[2])), Math.min(85, up(b[3]))];
 }
 
+/**
+ * How long to sit out after a 429, from the provider's own reason. Open-Meteo
+ * names the limit it applied: a minute's passes soon, an hour's resets at
+ * the top of the hour, a day's at midnight UTC. Thirty seconds of grace.
+ */
+export function cooldownFor(reason: string, nowMs: number, fallbackMs: number): number {
+  const d = new Date(nowMs);
+  if (/daily/i.test(reason)) return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) + 30_000 - nowMs;
+  if (/hourly/i.test(reason)) return (3600_000 - (nowMs % 3600_000)) + 30_000;
+  return fallbackMs;
+}
+
 /** True when `outer` contains `inner`. */
 export function bboxContains(outer: Bbox, inner: Bbox): boolean {
   return outer[0] <= inner[0] && outer[1] <= inner[1] && outer[2] >= inner[2] && outer[3] >= inner[3];

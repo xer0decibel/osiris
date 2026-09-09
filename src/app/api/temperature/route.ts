@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { httpJson } from '@/lib/httpJson';
-import { GRID_COLS, GRID_ROWS, GRID_MAX_POINTS, parseBbox, snapBbox, bboxContains, gridPoints, openMeteoUrl, readOpenMeteo, type TempGrid, type Bbox } from '@/lib/temperature-grid';
+import { httpJson, HttpError } from '@/lib/httpJson';
+import { GRID_COLS, GRID_ROWS, GRID_MAX_POINTS, parseBbox, snapBbox, bboxContains, gridPoints, openMeteoUrl, readOpenMeteo, cooldownFor, type TempGrid, type Bbox } from '@/lib/temperature-grid';
 
 /**
  * OSIRIS — the current air-temperature field for a view. See
@@ -14,6 +14,8 @@ import { GRID_COLS, GRID_ROWS, GRID_MAX_POINTS, parseBbox, snapBbox, bboxContain
  * lattice, a fresh field that covers the request is served from cache without
  * asking, no more than one request goes upstream every few seconds, and a
  * 429 starts a cooldown during which the best cached field is served instead.
+ * Open-Meteo says which limit was hit — a minute's, an hour's, a day's — and
+ * the cooldown lasts until that limit resets, so the page can say when.
  */
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +25,7 @@ const COOLDOWN_MS = 90 * 1000;
 const cache = new Map<string, { at: number; grid: TempGrid }>();
 let lastUpstream = 0;
 let cooldownUntil = 0;
+let cooldownReason = '';
 
 /** The freshest cached field that covers the request, or failing that overlaps it most. */
 function bestCached(bbox: Bbox, nowMs: number): TempGrid | null {
@@ -55,7 +58,8 @@ export async function GET(req: Request) {
   if (served) return NextResponse.json({ ...served, cached: true }, { headers });
 
   if (now < cooldownUntil || now - lastUpstream < MIN_GAP_MS) {
-    return NextResponse.json({ error: 'temperature provider is being rate-limited; try again shortly', retryAfterMs: Math.max(cooldownUntil - now, MIN_GAP_MS) }, { status: 503, headers: { 'Retry-After': '5' } });
+    const retryAfterMs = Math.max(cooldownUntil - now, MIN_GAP_MS);
+    return NextResponse.json({ error: 'temperature provider is being rate-limited; try again shortly', reason: now < cooldownUntil ? cooldownReason : '', retryAfterMs, resumesAt: new Date(now + retryAfterMs).toISOString() }, { status: 503, headers: { 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) } });
   }
 
   const points = gridPoints(bbox, cols, rows);
@@ -70,7 +74,13 @@ export async function GET(req: Request) {
     return NextResponse.json(grid, { headers });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'temperature fetch failed';
-    if (/429/.test(message)) cooldownUntil = Date.now() + COOLDOWN_MS;
+    if (e instanceof HttpError && e.status === 429) {
+      let reason = '';
+      try { reason = String((JSON.parse(e.body) as { reason?: unknown }).reason ?? ''); } catch { /* not JSON */ }
+      cooldownReason = reason;
+      cooldownUntil = Date.now() + cooldownFor(reason, Date.now(), COOLDOWN_MS);
+      return NextResponse.json({ error: message, reason, retryAfterMs: cooldownUntil - Date.now(), resumesAt: new Date(cooldownUntil).toISOString() }, { status: 503, headers: { 'Retry-After': String(Math.ceil((cooldownUntil - Date.now()) / 1000)) } });
+    }
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
