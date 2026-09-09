@@ -29,7 +29,10 @@ const NE = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/maste
 const LAYERS = [
   { file: 'ne_110m_land', as: 'land' },
   { file: 'ne_50m_admin_0_countries', as: 'countries' },
-  { file: 'ne_110m_admin_1_states_provinces_lines', as: 'states' },
+  /* Polygons rather than the _lines variant: a line layer renders a polygon's
+     outline perfectly well, and the polygons carry the names the offline
+     gazetteer needs to resolve "oregon". One file, both jobs. */
+  { file: 'ne_110m_admin_1_states_provinces', as: 'states' },
   { file: 'ne_110m_lakes', as: 'lakes' },
   { file: 'ne_110m_populated_places_simple', as: 'places' },
 ];
@@ -78,11 +81,26 @@ function trimPrecision(geojson) {
   return geojson;
 }
 
-/** Only the handful of properties the style labels or filters on. */
+/**
+ * Only the handful of properties the style labels or filters on.
+ *
+ * Matched case-insensitively, and written back under the canonical name. Natural
+ * Earth is not consistent: the country layers use NAME while the "simple"
+ * populated-places layer uses name. Filtering for one spelling silently emptied
+ * every place feature, which cost the offline map all of its city labels and
+ * left the offline gazetteer with nothing but countries — and neither failed
+ * loudly, they just quietly had nothing to show.
+ */
 function keepProps(feature, keys) {
   const p = feature.properties ?? {};
+  const byLower = new Map(Object.keys(p).map(k => [k.toLowerCase(), k]));
   const out = {};
-  for (const k of keys) if (p[k] !== undefined && p[k] !== null) out[k] = p[k];
+  for (const k of keys) {
+    const actual = byLower.get(k.toLowerCase());
+    if (actual !== undefined && p[actual] !== undefined && p[actual] !== null) {
+      out[k] = p[actual];
+    }
+  }
   feature.properties = out;
   return feature;
 }
@@ -92,7 +110,7 @@ const PROPS = {
   places: ['NAME', 'POP_MAX', 'ADM0NAME'],
   land: [],
   lakes: ['name'],
-  states: [],
+  states: ['name', 'admin'],
 };
 
 async function main() {
