@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
     },
   },
   output: 'standalone',
+  // The development-tools button Next draws at the bottom-left of every page
+  // sat on top of the layer rail's Ghost Protocol button, and its only other
+  // homes are the three corners we already use. Off, then. Build errors still
+  // surface as the full overlay; only the button goes.
+  devIndicators: false,
   serverExternalPackages: ['ws'],
   transpilePackages: ['react-map-gl', 'mapbox-gl', 'maplibre-gl'],
   // Type errors block the build again. They were suppressed while 17 stood
