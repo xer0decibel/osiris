@@ -1,5 +1,8 @@
 # OSIRIS — handoff
 
+*New here? Read [WELCOME.md](WELCOME.md) first — it is shorter and tells you
+where to stand. This file is the reference.*
+
 Read this before touching the map. Written across one very long session,
 2026-09-08/09, which took a cloned dashboard, added six layers, made it work
 with no network, and started packaging it as a bootable drive.
