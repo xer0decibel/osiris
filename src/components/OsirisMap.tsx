@@ -459,16 +459,17 @@ function OsirisMap({
 
       // Day/Night
       /* ISOTHERMS — the temperature field as bands, under the day/night shading
-         and every data layer. Bands are painted in threshold order so the
-         warmer ones sit on top; the lines and labels trace their edges. */
+         and every data layer. The bands do not overlap (lib/isotherms cuts each
+         region out of the one below), so the one fill opacity is how much of
+         the map shows through; the lines and labels trace the isotherms. */
       map.addSource('wx-isotherms', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({ id: 'wx-isotherm-fill', type: 'fill', source: 'wx-isotherms', layout: { 'fill-sort-key': ['get', 't'], visibility: 'none' }, paint: {
-        'fill-color': tempColorExpression() as maplibregl.ExpressionSpecification, 'fill-opacity': 0.42,
+      map.addLayer({ id: 'wx-isotherm-fill', type: 'fill', source: 'wx-isotherms', filter: ['==', ['get', 'kind'], 'band'], layout: { visibility: 'none' }, paint: {
+        'fill-color': tempColorExpression() as maplibregl.ExpressionSpecification, 'fill-opacity': 0.45,
       }});
-      map.addLayer({ id: 'wx-isotherm-line', type: 'line', source: 'wx-isotherms', layout: { visibility: 'none' }, paint: {
+      map.addLayer({ id: 'wx-isotherm-line', type: 'line', source: 'wx-isotherms', filter: ['==', ['get', 'kind'], 'line'], layout: { visibility: 'none' }, paint: {
         'line-color': '#ffffff', 'line-opacity': 0.28, 'line-width': 0.8,
       }});
-      map.addLayer({ id: 'wx-isotherm-label', type: 'symbol', source: 'wx-isotherms', layout: {
+      map.addLayer({ id: 'wx-isotherm-label', type: 'symbol', source: 'wx-isotherms', filter: ['==', ['get', 'kind'], 'line'], layout: {
         'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 10, 'text-font': ['Open Sans Regular'],
         'text-letter-spacing': 0.05, 'symbol-spacing': 260, 'text-max-angle': 30, visibility: 'none',
       }, paint: { 'text-color': '#ffffff', 'text-opacity': 0.85, 'text-halo-color': '#000000', 'text-halo-width': 1.2 }});

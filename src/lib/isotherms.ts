@@ -7,9 +7,13 @@ import type { TempGrid } from './temperature-grid';
  * The grid is coarse — a few hundred points across the view — so it is first
  * upsampled by bilinear interpolation, then contoured with marching squares
  * at a fixed step. That is what gives the curves: the interpolation makes the
- * surface continuous, the contouring follows it. Each band is a polygon of
- * everything at or above its threshold, and the map paints them in threshold
- * order so the hotter bands sit on top.
+ * surface continuous, the contouring follows it. d3 gives nested regions —
+ * everything at or above each threshold — and painting those on top of one
+ * another at any opacity hides the map under the hot spots twenty times
+ * over. So each region has the next one cut out of it, leaving bands that
+ * tile the extent without overlap; one fill opacity is then the whole
+ * translucency. The region outlines are kept as the isolines, since a
+ * band's outline is two isotherms and would be mislabelled.
  */
 
 export type TempUnit = 'C' | 'F';
@@ -81,15 +85,94 @@ export function bandThresholds(values: number[], stepC = 2): number[] {
 
 export interface IsothermFeature {
   type: 'Feature';
-  properties: { t: number; label: string };
+  /** `band`: the region between two thresholds, for the fill. `line`: one isotherm's outline, for lines and labels. */
+  properties: { kind: 'band' | 'line'; t: number; label: string };
   geometry: { type: 'MultiPolygon'; coordinates: number[][][][] };
 }
 
+export type Ring = [number, number][];
+
+/** Shoelace, signed: positive is counter-clockwise in an x-right, y-up frame such as lng/lat. */
+export function ringArea(ring: Ring): number {
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+  return a / 2;
+}
+
+/** Ray casting. */
+export function pointInRing([x, y]: [number, number], ring: Ring): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function oriented(ring: Ring, outer: boolean): Ring {
+  return (ringArea(ring) > 0) === outer ? ring : [...ring].reverse();
+}
+
 /**
- * The bands as GeoJSON in lng/lat. d3-contour works in cell units, one per
- * grid value with the value at the cell's centre; the geographic mapping
- * undoes that, and the padded view the grid was sampled over becomes the
- * extent of the field.
+ * The region at or above one threshold minus the region at or above the
+ * next: polygons with holes that cover exactly the band between them.
+ *
+ * Every ring of both regions is placed in one containment tree (a ring's
+ * parent is the smallest ring around it). Walking down the tree, a lower
+ * ring toggles being inside the lower region and an upper ring toggles the
+ * upper; a node whose interior is inside the lower and outside the upper is
+ * in the band, and its polygon is its ring with its children as holes.
+ * Outer rings come out counter-clockwise and holes clockwise.
+ */
+export function bandPolygons(lower: Ring[][], upper: Ring[][]): Ring[][] {
+  interface Node { ring: Ring; size: number; lower: boolean; box: [number, number, number, number] }
+  const node = (ring: Ring, isLower: boolean): Node => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of ring) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    return { ring, size: Math.abs(ringArea(ring)), lower: isLower, box: [x0, y0, x1, y1] };
+  };
+  const rings: Node[] = [];
+  for (const poly of lower) for (const ring of poly) rings.push(node(ring, true));
+  for (const poly of upper) for (const ring of poly) rings.push(node(ring, false));
+  // Most rings are small and far apart, so the box test settles nearly every pair.
+  const parent = rings.map((r, i) => {
+    const [px, py] = r.ring[0];
+    let best = -1;
+    for (let j = 0; j < rings.length; j++) {
+      const c = rings[j];
+      if (j === i || c.size <= r.size || (best >= 0 && c.size >= rings[best].size)) continue;
+      if (px < c.box[0] || px > c.box[2] || py < c.box[1] || py > c.box[3]) continue;
+      if (pointInRing(r.ring[0], c.ring)) best = j;
+    }
+    return best;
+  });
+  const inBand = new Array<boolean>(rings.length);
+  const states = new Map<number, [number, number]>();
+  const state = (i: number): [number, number] => {
+    const known = states.get(i);
+    if (known) return known;
+    const up: [number, number] = parent[i] < 0 ? [0, 0] : state(parent[i]);
+    const s: [number, number] = rings[i].lower ? [up[0] + 1, up[1]] : [up[0], up[1] + 1];
+    states.set(i, s);
+    return s;
+  };
+  for (let i = 0; i < rings.length; i++) { const [lo, hi] = state(i); inBand[i] = lo % 2 === 1 && hi % 2 === 0; }
+  const out: Ring[][] = [];
+  for (let i = 0; i < rings.length; i++) {
+    if (!inBand[i]) continue;
+    const poly: Ring[] = [oriented(rings[i].ring, true)];
+    for (let c = 0; c < rings.length; c++) if (parent[c] === i) poly.push(oriented(rings[c].ring, false));
+    out.push(poly);
+  }
+  return out;
+}
+
+/**
+ * The bands and isolines as GeoJSON in lng/lat. d3-contour works in cell
+ * units, one per grid value with the value at the cell's centre; the
+ * geographic mapping undoes that, and the padded view the grid was sampled
+ * over becomes the extent of the field. Coordinates are kept to four
+ * decimals (eleven metres), which halves what the map has to swallow.
  */
 export function isothermBands(grid: TempGrid, unit: TempUnit, stepC = 2, factor = 6): { type: 'FeatureCollection'; features: IsothermFeature[] } {
   const up = upsample(grid.values, grid.cols, grid.rows, factor);
@@ -97,14 +180,18 @@ export function isothermBands(grid: TempGrid, unit: TempUnit, stepC = 2, factor 
   const [w, s, e, n] = grid.bbox;
   const toLng = (x: number) => Math.min(e, Math.max(w, w + (e - w) * (x - 0.5) / (up.cols - 1)));
   const toLat = (y: number) => Math.min(n, Math.max(s, s + (n - s) * (y - 0.5) / (up.rows - 1)));
+  const round = (v: number) => Math.round(v * 1e4) / 1e4;
   const generator = contours().size([up.cols, up.rows]).thresholds(thresholds);
-  const features: IsothermFeature[] = generator(up.values).map(band => ({
-    type: 'Feature',
-    properties: { t: band.value, label: formatTemp(band.value, unit) },
-    geometry: {
-      type: 'MultiPolygon',
-      coordinates: band.coordinates.map(poly => poly.map(ring => ring.map(([x, y]) => [toLng(x), toLat(y)]))),
-    },
+  const regions = generator(up.values).map(region => ({
+    t: region.value,
+    polygons: region.coordinates.map(poly => poly.map(ring => ring.map(([x, y]) => [round(toLng(x)), round(toLat(y))] as [number, number]))) as Ring[][],
   }));
+  const features: IsothermFeature[] = [];
+  regions.forEach((region, i) => {
+    const props = { t: region.t, label: formatTemp(region.t, unit) };
+    const band = bandPolygons(region.polygons, regions[i + 1]?.polygons ?? []);
+    if (band.length) features.push({ type: 'Feature', properties: { kind: 'band', ...props }, geometry: { type: 'MultiPolygon', coordinates: band } });
+    if (region.polygons.length) features.push({ type: 'Feature', properties: { kind: 'line', ...props }, geometry: { type: 'MultiPolygon', coordinates: region.polygons } });
+  });
   return { type: 'FeatureCollection', features };
 }
