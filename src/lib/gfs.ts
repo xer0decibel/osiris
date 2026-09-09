@@ -89,22 +89,32 @@ export function sampleGlobal(f: GlobalField, lat: number, lng: number): number {
 
 /**
  * The field cropped to a view, in the shape the isotherm code already reads.
- * At most `maxCols` × `maxRows` cells, and never finer than the model: a
- * view narrower than the lattice gets the cells it covers, not invented ones.
+ *
+ * The crop sits on the model's own lattice: a stride of a whole number of
+ * cells, the smallest that fits the budget, and edges on multiples of it. So
+ * two views that overlap sample exactly the same cells where they overlap,
+ * and a pan does not make the bands wobble. The first version spread the
+ * samples evenly across whatever box was asked for; every settle then fell
+ * on slightly different cells, and the colours drifted with each move.
+ * The bbox returned is the aligned one, a little larger than asked.
  */
 export function cropField(f: GlobalField, bbox: Bbox, maxCols = GFS_MAX_COLS, maxRows = GFS_MAX_ROWS): TempGrid {
   const [w, s, e, n] = bbox;
-  const cols = Math.max(2, Math.min(maxCols, Math.floor((e - w) / f.dLon) + 1));
-  const rows = Math.max(2, Math.min(maxRows, Math.floor((n - s) / Math.abs(f.dLat)) + 1));
-  if (cols * rows > Math.max(GRID_MAX_POINTS, maxCols * maxRows)) throw new Error('GFS: crop too large');
+  const dx = f.dLon, dy = Math.abs(f.dLat);
+  const k = Math.max(1, Math.ceil((e - w) / dx / (maxCols - 2)), Math.ceil((n - s) / dy / (maxRows - 2)));
+  const sx = k * dx, sy = k * dy;
+  const w2 = Math.max(-180, Math.floor(w / sx) * sx), e2 = Math.min(180, Math.ceil(e / sx) * sx);
+  const s2 = Math.max(-90, Math.floor(s / sy) * sy), n2 = Math.min(90, Math.ceil(n / sy) * sy);
+  const cols = Math.max(2, Math.round((e2 - w2) / sx) + 1);
+  const rows = Math.max(2, Math.round((n2 - s2) / sy) + 1);
+  if (cols * rows > Math.max(GRID_MAX_POINTS, (maxCols + 1) * (maxRows + 1))) throw new Error('GFS: crop too large');
   const values = new Array<number | null>(cols * rows);
   for (let r = 0; r < rows; r++) {
-    const lat = s + (n - s) * r / (rows - 1);
+    const lat = s2 + r * sy;
     for (let c = 0; c < cols; c++) {
-      const lng = w + (e - w) * c / (cols - 1);
-      const v = sampleGlobal(f, lat, lng);
+      const v = sampleGlobal(f, lat, w2 + c * sx);
       values[r * cols + c] = Number.isFinite(v) ? Math.round(v * 10) / 10 : null;
     }
   }
-  return { cols, rows, bbox, values, time: f.time };
+  return { cols, rows, bbox: [w2, s2, e2, n2], values, time: f.time };
 }

@@ -69,11 +69,27 @@ describe('the global field', () => {
     expect(crop.time).toBe('2026-09-09T12:00:00Z');
   });
 
-  it('caps the globe at the client budget', () => {
+  it('caps the globe at the client budget, on a whole-cell stride', () => {
     const crop = cropField(latitudeGlobe(), [-180, -85, 180, 85]);
-    expect(crop.cols).toBe(GFS_MAX_COLS);
-    expect(crop.rows).toBe(GFS_MAX_ROWS);
-    expect(crop.values.length).toBe(GFS_MAX_COLS * GFS_MAX_ROWS);
-    expect(crop.values[0]).toBe(-84820); // lat -85, and -180 is column 180
+    expect(crop.cols).toBeLessThanOrEqual(GFS_MAX_COLS + 1);
+    expect(crop.rows).toBeLessThanOrEqual(GFS_MAX_ROWS + 1);
+    expect(crop.bbox).toEqual([-180, -87, 180, 87]); // every third cell, edges on multiples of three
+    expect(crop.cols).toBe(121);
+    expect(crop.rows).toBe(59);
+    expect(crop.values[0]).toBe(-86820); // lat -87, and -180 is column 180
+  });
+
+  it('samples the same cells for two views that overlap, so a pan does not shift the bands', () => {
+    const g = latitudeGlobe();
+    const a = cropField(g, [-125, 40, -115, 50]);
+    const b = cropField(g, [-124.3, 40.6, -114.2, 50.7]);
+    expect(b.bbox).toEqual([-125, 40, -114, 51]);
+    const at = (grid: ReturnType<typeof cropField>, lat: number, lng: number) => {
+      const c = Math.round((lng - grid.bbox[0]) / ((grid.bbox[2] - grid.bbox[0]) / (grid.cols - 1)));
+      const r = Math.round((lat - grid.bbox[1]) / ((grid.bbox[3] - grid.bbox[1]) / (grid.rows - 1)));
+      return grid.values[r * grid.cols + c];
+    };
+    for (const [lat, lng] of [[45, -120], [41, -124], [50, -115]]) expect(at(b, lat, lng)).toBe(at(a, lat, lng));
+    expect(at(a, 45, -120)).toBe(45240);
   });
 });
