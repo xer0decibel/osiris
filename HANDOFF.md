@@ -3,9 +3,13 @@
 *New here? Read [WELCOME.md](WELCOME.md) first — it is shorter and tells you
 where to stand. This file is the reference.*
 
-Read this before touching the map. Written across one very long session,
-2026-09-08/09, which took a cloned dashboard, added six layers, made it work
-with no network, and started packaging it as a bootable drive.
+Read this before touching the map. Written across three sessions on
+2026-09-08/09: the first took a cloned dashboard, added six layers, made it
+work with no network and started packaging it as a bootable drive; the second
+wired typed commands and the offline gazetteer; the third rebuilt the weather
+surface (temperature from two models, painted rather than contoured, and a
+night shade that fades), then forked, pushed, merged upstream's latest and
+sent the first pull request back.
 
 **What this is:** a fork-in-progress of
 [simplifaisoul/osiris](https://github.com/simplifaisoul/osiris) — an OSINT
@@ -234,6 +238,8 @@ The useful half of this document.
   one on :3000 — it serves the same working tree, hot reload included — despite a
   hook saying it cannot be reached. Try before believing either message.
 
+### Session 3 (2026-09-09, afternoon and evening)
+
 - **A keyless provider's budget is spent per point, not per request.** The
   temperature field asked Open-Meteo for 384 points on every map settle, each
   settle made a new three-decimal key, and my own probes added more. Within the
@@ -256,13 +262,42 @@ The useful half of this document.
   one image source, one opacity — took an hour, runs twenty times faster, and
   cannot clip. When a layer is a continuous field, reach for a raster first.
 
+- **"It keeps shifting colour" was three different things,** and only one
+  of them was what it looked like. The crop was re-sampled on a stride that
+  depended on the exact view, so every settle fell on different model cells
+  (fixed by cropping on the model's own lattice); the source switch at 20°
+  swapped a six-hour-old analysis for a current reading (fixed by fetching the
+  run's forecast hours and interpolating to now); and a dissolve that waited
+  on the map going idle could be cancelled first, leaving a stale face at
+  full opacity under the next one (fixed by firing on the source's own load
+  event, with a fallback, and at the latest on teardown). Measure each symptom
+  separately; the user's one sentence does not mean one cause.
+
+- **A validator that reuses the code under test is circular.** The polygon
+  validator used the same interior-point function as the containment tree, so
+  when the area sign was inverted both agreed and the count went *up* after
+  the "fix". The clue was in the numbers, not the verdict: rows failing only
+  along the field's top edge, with the nudge landing at 50.00001. Print the
+  failing cases, not the tally.
+
+- **The dev server dies on a config change.** A merge that touched
+  `next.config.ts` made `next dev` restart and it exited instead; the user's
+  tab went dark and `npm run dev` from the wrong directory gave an ENOENT for
+  `package.json` in the home folder. Say which directory, every time.
+
+- **Browser-pane verification works when the pane is fronted.** The map never
+  initialises in a hidden pane, but `tabs_select` plus one screenshot makes it
+  draw, and from there `__osirisMap` answers layer order, opacities, source
+  coordinates and loaded state. That is how the satellite-ordering fix was
+  proven rather than assumed.
+
 ---
 
 ## Open threads
 
 - **The window refactor was verified by typecheck, lint and the suite, not by
-  eye — except the ArcGIS window, which the operator has since used and
-  screenshotted, and it renders as designed.** Fifteen panels moved onto `FloatingWindow` in one sitting while the
+  eye — except the ArcGIS window and the temperature legend window, which the
+  operator has since used and screenshotted, and both render as designed.** Fifteen panels moved onto `FloatingWindow` in one sitting while the
   preview pane was collapsed, so none of them has been looked at since. What
   to check first: each window's drag and ✕; the collapsed-header controls that
   became window actions (Recon's full screen, Markets' and Alerts' maximise,
@@ -326,13 +361,28 @@ The useful half of this document.
 
 ---
 
-## Current state (end of session 2, 2026-09-09, evening)
+## Current state (end of session 3, 2026-09-09, night)
 
-**737 tests pass**, typecheck clean, lint clean on every file added here, and
-**no worse** on every upstream file touched: `page.tsx` 94, `OsirisMap.tsx`
-147, `LayerPanel.tsx` 8 (down from 9), `ArcGISPanel.tsx` 6 — the check to
-repeat after touching any of them. Working tree clean, 78 commits on
-`feat/intel-layers`, pushed to the fork. `npm run dev` on :3000.
+**754 tests pass** (upstream's own included since the merge), typecheck clean,
+lint clean on every file added here, and **no worse** on every upstream file
+touched: `page.tsx` 94, `OsirisMap.tsx` 146 (down from 147), `LayerPanel.tsx`
+8, `ArcGISPanel.tsx` 6 — the check to repeat after touching any of them.
+Working tree clean. `feat/intel-layers` is 82 commits ahead of upstream's
+master and 0 behind, pushed to the fork (`origin`); upstream's master is
+`upstream`. PR #333 (the FIRMS fix) is open on upstream from the
+`fix/firms-sampling` branch in the worktree `../osiris-pr`. `npm run dev` on
+:3000, from the repo directory.
+
+**Session 3 in one paragraph.** The temperature layer went from a single
+Open-Meteo grid that blanked on a 429 to: a budgeted Open-Meteo field near,
+NOAA GFS far (GRIB2 decoded in the repo, the run's forecast hours interpolated
+to now, the whole globe once the view is wide, cropped on the model's lattice),
+painted as an image rather than contoured, dissolving between updates, held
+while it still covers the view, with white borders over it, a draggable
+legend, and the basemap imagery underneath. The night shade became a
+per-pixel twilight from a properly placed sun. Then the fork was made, the
+branch pushed, upstream's two new commits merged (two conflicts, both kept
+both sides), and the fires fix cut onto its own branch and sent as PR #333.
 
 The commit chain that worked, for the next session to copy: `cd` into the
 repo first; run the patch script and capture its exit code directly, not
