@@ -51,11 +51,9 @@ describe('field to bands', () => {
     expect(bandThresholds([], 2)).toEqual([]);
   });
 
-  it('makes bands and isolines in lng/lat, hotter ones toward the warmer east', () => {
-    const all = isothermBands(grid, 'F', 2, 2);
-    const fc = { ...all, features: all.features.filter(f => f.properties.kind === 'line') };
+  it('makes bands in lng/lat, hotter ones toward the warmer east', () => {
+    const fc = isothermBands(grid, 'F', 2, 2);
     expect(fc.features.length).toBeGreaterThan(2);
-    expect(all.features.filter(f => f.properties.kind === 'band').length).toBeGreaterThan(2);
     const ts = fc.features.map(f => f.properties.t);
     expect(ts).toEqual([...ts].sort((a, b) => a - b));
     for (const f of fc.features) {
@@ -82,7 +80,7 @@ describe('field to bands', () => {
         5, 5, 5, 5, 5,
       ],
     };
-    const bands = isothermBands(bump, 'C', 10, 4).features.filter(f => f.properties.kind === 'band');
+    const bands = isothermBands(bump, 'C', 10, 4).features;
     const area = (poly: Ring[]) => poly.reduce((a, ring, i) => a + (i === 0 ? Math.abs(ringArea(ring)) : -Math.abs(ringArea(ring))), 0);
     const total = bands.reduce((a, f) => a + (f.geometry.coordinates as Ring[][]).reduce((b, poly) => b + area(poly), 0), 0);
     expect(total).toBeCloseTo(100, 0); // the whole 10×10 extent, once

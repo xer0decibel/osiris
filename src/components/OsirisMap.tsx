@@ -147,6 +147,8 @@ function OsirisMap({
  data, activeLayers, weatherTiles, temperatureField = null, temperatureStations = null, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  /** The border files are two megabytes; they are fetched the first time the temperature layer is on, not at start. */
+  const wxBordersLoaded = useRef(false);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [startupStatus, setStartupStatus] = useState<MapStartupStatus>('loading');
@@ -461,18 +463,22 @@ function OsirisMap({
       /* ISOTHERMS — the temperature field as bands, under the day/night shading
          and every data layer. The bands do not overlap (lib/isotherms cuts each
          region out of the one below), so the one fill opacity is how much of
-         the map shows through; the lines and labels trace the isotherms. */
+         the map shows through. No outlines: the colour is the picture. Over it,
+         white country and state borders from the offline basemap's own files
+         (Natural Earth, fetched by tools/fetch-offline-basemap.mjs), so the
+         colour can be read against places; absent the files, no borders. */
       map.addSource('wx-isotherms', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({ id: 'wx-isotherm-fill', type: 'fill', source: 'wx-isotherms', filter: ['==', ['get', 'kind'], 'band'], layout: { visibility: 'none' }, paint: {
+      map.addLayer({ id: 'wx-isotherm-fill', type: 'fill', source: 'wx-isotherms', layout: { visibility: 'none' }, paint: {
         'fill-color': tempColorExpression() as maplibregl.ExpressionSpecification, 'fill-opacity': 0.45,
       }});
-      map.addLayer({ id: 'wx-isotherm-line', type: 'line', source: 'wx-isotherms', filter: ['==', ['get', 'kind'], 'line'], layout: { visibility: 'none' }, paint: {
-        'line-color': '#ffffff', 'line-opacity': 0.28, 'line-width': 0.8,
+      map.addSource('wx-border-countries', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addSource('wx-border-states', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'wx-border-state', type: 'line', source: 'wx-border-states', minzoom: 3, layout: { visibility: 'none' }, paint: {
+        'line-color': '#ffffff', 'line-opacity': 0.45, 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.5, 8, 1],
       }});
-      map.addLayer({ id: 'wx-isotherm-label', type: 'symbol', source: 'wx-isotherms', filter: ['==', ['get', 'kind'], 'line'], layout: {
-        'symbol-placement': 'line', 'text-field': ['get', 'label'], 'text-size': 10, 'text-font': ['Open Sans Regular'],
-        'text-letter-spacing': 0.05, 'symbol-spacing': 260, 'text-max-angle': 30, visibility: 'none',
-      }, paint: { 'text-color': '#ffffff', 'text-opacity': 0.85, 'text-halo-color': '#000000', 'text-halo-width': 1.2 }});
+      map.addLayer({ id: 'wx-border-country', type: 'line', source: 'wx-border-countries', layout: { visibility: 'none' }, paint: {
+        'line-color': '#ffffff', 'line-opacity': 0.8, 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.6, 5, 1.1, 9, 1.8],
+      }});
       /* The thermometers themselves, so the model and the measurement can be
          seen to agree or not. Coloured on the same ramp as the bands. */
       map.addSource('wx-stations', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -2425,12 +2431,18 @@ function OsirisMap({
     map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': 0.85 } }, before);
   }, [mapReady, activeLayers.traffic]);
 
-  // Temperature field → isotherm bands
+  // Temperature field → isotherm bands, with the borders drawn over them
   useEffect(() => {
     if (!mapReady) return;
+    const map = mapRef.current;
+    if (map && activeLayers.wx_temp && !wxBordersLoaded.current) {
+      wxBordersLoaded.current = true;
+      (map.getSource('wx-border-countries') as maplibregl.GeoJSONSource | undefined)?.setData('/offline/countries.geojson');
+      (map.getSource('wx-border-states') as maplibregl.GeoJSONSource | undefined)?.setData('/offline/states.geojson');
+    }
     setGeo('wx-isotherms', temperatureField?.features ?? []);
     setGeo('wx-stations', temperatureStations?.features ?? []);
-    setVis(['wx-isotherm-fill', 'wx-isotherm-line', 'wx-isotherm-label'], Boolean(activeLayers.wx_temp && temperatureField));
+    setVis(['wx-isotherm-fill', 'wx-border-state', 'wx-border-country'], Boolean(activeLayers.wx_temp && temperatureField));
     setVis(['wx-station-dots', 'wx-station-label'], Boolean(activeLayers.wx_temp && temperatureStations));
   }, [mapReady, temperatureField, temperatureStations, activeLayers.wx_temp, setGeo, setVis]);
 

@@ -12,8 +12,8 @@ import type { TempGrid } from './temperature-grid';
  * another at any opacity hides the map under the hot spots twenty times
  * over. So each region has the next one cut out of it, leaving bands that
  * tile the extent without overlap; one fill opacity is then the whole
- * translucency. The region outlines are kept as the isolines, since a
- * band's outline is two isotherms and would be mislabelled.
+ * translucency. There are no outlines: the colour is the whole picture,
+ * and the map's borders are drawn over it instead.
  */
 
 export type TempUnit = 'C' | 'F';
@@ -85,8 +85,8 @@ export function bandThresholds(values: number[], stepC = 2): number[] {
 
 export interface IsothermFeature {
   type: 'Feature';
-  /** `band`: the region between two thresholds, for the fill. `line`: one isotherm's outline, for lines and labels. */
-  properties: { kind: 'band' | 'line'; t: number; label: string };
+  /** The band from `t` up to the next threshold; `label` is `t` in the chosen unit. */
+  properties: { t: number; label: string };
   geometry: { type: 'MultiPolygon'; coordinates: number[][][][] };
 }
 
@@ -168,7 +168,7 @@ export function bandPolygons(lower: Ring[][], upper: Ring[][]): Ring[][] {
 }
 
 /**
- * The bands and isolines as GeoJSON in lng/lat. d3-contour works in cell
+ * The bands as GeoJSON in lng/lat. d3-contour works in cell
  * units, one per grid value with the value at the cell's centre; the
  * geographic mapping undoes that, and the padded view the grid was sampled
  * over becomes the extent of the field. Coordinates are kept to four
@@ -190,8 +190,7 @@ export function isothermBands(grid: TempGrid, unit: TempUnit, stepC = 2, factor 
   regions.forEach((region, i) => {
     const props = { t: region.t, label: formatTemp(region.t, unit) };
     const band = bandPolygons(region.polygons, regions[i + 1]?.polygons ?? []);
-    if (band.length) features.push({ type: 'Feature', properties: { kind: 'band', ...props }, geometry: { type: 'MultiPolygon', coordinates: band } });
-    if (region.polygons.length) features.push({ type: 'Feature', properties: { kind: 'line', ...props }, geometry: { type: 'MultiPolygon', coordinates: region.polygons } });
+    if (band.length) features.push({ type: 'Feature', properties: props, geometry: { type: 'MultiPolygon', coordinates: band } });
   });
   return { type: 'FeatureCollection', features };
 }
