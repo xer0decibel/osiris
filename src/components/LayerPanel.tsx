@@ -67,10 +67,9 @@ function ViewToggle({ icon: Icon, label, title, onClick, wide }: {
       onClick={onClick}
       title={title}
       aria-label={title}
-      className="w-10 h-10 flex flex-col items-center justify-center gap-[3px] rounded-lg transition-colors hover:bg-white/[0.05] focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+      className="w-8 h-8 flex items-center justify-center rounded-full transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
     >
-      <Icon style={{ width: 15, height: 15, color: 'rgba(255,255,255,0.75)' }} />
-      <span className="text-[8px] font-mono tracking-[0.15em] leading-none text-white/45">{label}</span>
+      <Icon style={{ width: 16, height: 16, color: 'rgba(255,255,255,0.75)' }} />
     </button>
   );
 }
@@ -445,26 +444,24 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
   /* ── DESKTOP ── */
   return (
     <motion.div
-      initial={{ x: -60, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
+      /* The vertical centring rides on framer's own transform: a Tailwind
+         -translate-y-1/2 would be overwritten the moment the slide-in animates. */
+      initial={{ x: -60, y: '-50%', opacity: 0 }}
+      animate={{ x: 0, y: '-50%', opacity: 1 }}
       transition={{ type: 'spring', damping: 30, stiffness: 200, delay: 2.8 }}
-      className="absolute top-0 left-0 h-full w-[48px] flex flex-col items-center gap-1 pt-24 pb-6 z-50 pointer-events-auto"
-      style={{
-        background: 'rgba(0,0,0,0.15)',
-        backdropFilter: 'blur(24px) saturate(1.2)',
-        WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
-      }}
+      /* Same pill as the tool rail on the right: floating, centred, rounded. */
+      className="absolute left-2 top-1/2 flex flex-col items-center gap-2 z-50 pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5"
     >
       {/* The two view toggles sit at the top of the rail, above the groups. */}
       {viewToggles && (
         <>
-          <div className="flex flex-col items-center gap-1">{viewToggles}</div>
-          <div className="w-5 h-px bg-white/[0.06] my-1" />
+          <div className="flex flex-col items-center gap-2">{viewToggles}</div>
+          <div className="w-4 h-px bg-white/10" />
         </>
       )}
       {/* One flow, one gap: the utilities below follow the groups at the same
           spacing rather than being pushed to the foot of the rail. */}
-      <div className="flex flex-col items-center gap-1">
+      <div className="flex flex-col items-center gap-2">
         {visibleGroups.map((group) => {
           /* Sub-layers modify a parent rather than draw anything of their own,
              so they do not count towards the rail's reading. */
@@ -492,7 +489,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                 aria-expanded={isOpen}
                 aria-label={`${group.fullLabel}${activeCount ? ` — ${activeCount} active` : ''}`}
                 title={`${group.fullLabel}${activeCount ? ` — ${activeCount} active` : ''}`}
-                className="relative w-10 h-10 flex items-center justify-center cursor-pointer rounded-lg transition-all duration-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+                className="relative w-8 h-8 flex items-center justify-center cursor-pointer rounded-full transition-all duration-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
                 style={{
                   background: isPinned
                     ? 'rgba(255,255,255,0.10)'
@@ -525,7 +522,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                     animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
                     exit={{ opacity: 0, x: -4, filter: 'blur(2px)' }}
                     transition={{ duration: 0.18, ease: 'easeOut' }}
-                    className="absolute left-[52px] top-1/2 -translate-y-1/2 min-w-[220px] rounded-xl p-3 z-[100] pointer-events-auto"
+                    className="absolute left-[44px] top-1/2 -translate-y-1/2 min-w-[220px] rounded-xl p-3 z-[100] pointer-events-auto"
                     style={{
                       background: 'rgba(0,0,0,0.6)',
                       backdropFilter: 'blur(40px) saturate(1.5)',
@@ -596,13 +593,13 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
       </div>
 
       {/* Subtle separator */}
-      <div className="w-5 h-px bg-white/[0.06] my-1" />
+      <div className="w-4 h-px bg-white/10" />
 
       {/* Style Studio */}
       <button
         onClick={() => setStudioOpen(o => !o)}
         aria-pressed={studioOpen}
-        className="w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-500 cursor-pointer"
+        className="w-8 h-8 flex items-center justify-center rounded-full transition-all duration-500 cursor-pointer"
         style={{ background: studioOpen ? 'var(--hover-accent)' : 'transparent' }}
         title="Style Studio"
       >
@@ -624,7 +621,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
       {setTheme && (
         <button
           onClick={() => setTheme(theme === 'core' ? 'ghost' : 'core')}
-          className="w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-500 cursor-pointer"
+          className="w-8 h-8 flex items-center justify-center rounded-full transition-all duration-500 cursor-pointer"
           style={{
             background: theme === 'ghost' ? 'rgba(179, 136, 255, 0.1)' : 'transparent',
           }}
