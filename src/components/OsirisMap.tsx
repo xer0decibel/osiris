@@ -401,9 +401,9 @@ function OsirisMap({
       createGlyph(map, 'glyph-flame-mid', FLAME_GLYPH, '#FF6D00');
       createGlyph(map, 'glyph-flame-high', FLAME_GLYPH, '#D32F2F');
       createGlyph(map, 'glyph-radio', RADIO_GLYPH, radioColor);
-      // A TV marker stands for a whole country, so it is drawn at three times
-      // the size — rasterised larger, not scaled up, so it stays crisp.
-      createGlyph(map, 'glyph-tv', TV_GLYPH, tvColor, GLYPH_PX * 3);
+      // A TV marker stands for a whole country, so it is drawn at one and a half
+      // times the size — rasterised larger, not scaled up, so it stays crisp.
+      createGlyph(map, 'glyph-tv', TV_GLYPH, tvColor, GLYPH_PX * 1.5);
       // Named incidents: flames in the containment colours the dots used.
       createGlyph(map, 'glyph-flame-open', FLAME_GLYPH, '#FF1744');
       createGlyph(map, 'glyph-flame-held', FLAME_GLYPH, '#FFB300');
@@ -583,7 +583,7 @@ function OsirisMap({
       }});
       map.addLayer({ id: 'tv-dots', type: 'symbol', source: 'tv', layout: {
         'icon-image': 'glyph-tv',
-        'icon-size': ['interpolate',['linear'],['zoom'], 1,0.3, 5,0.45, 10,0.7],
+        'icon-size': ['interpolate',['linear'],['zoom'], 1,0.2, 5,0.4, 10,0.7],
         'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
       }, paint: { 'icon-opacity': 0.95 }});
       map.addLayer({ id: 'tv-label', type: 'symbol', source: 'tv', minzoom: 3, layout: {
