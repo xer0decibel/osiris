@@ -358,6 +358,20 @@ export default function Dashboard() {
     onTerrainFocus: () => setTerrainFocus(value => value + 1),
   };
   const [capabilities, setCapabilities] = useState<Record<string, boolean>>({});
+  /* Layers switched by a typed command — see lib/commands and SearchBar. The
+     same two rules the panel's own toggle applies: terrain needs the globe, and
+     a credential-gated layer stays off when the deployment cannot feed it. */
+  const applyLayers = useCallback((keys: string[], on: boolean) => {
+    if (on && keys.some(k => k === 'terrain_elevation' || k === 'terrain_3d')) setMapProjection('globe');
+    setActiveLayers(prev => {
+      const next: Record<string, boolean> = { ...prev };
+      for (const k of keys) {
+        if (k.startsWith('cf_') && !capabilities.cloudflare) continue;
+        next[k] = on;
+      }
+      return next as typeof prev;
+    });
+  }, [capabilities]);
   const [liveFeedUrl, setLiveFeedUrl] = useState<string | null>(null);
   const [liveFeedName, setLiveFeedName] = useState('');
   const [liveFeedEmbedAllowed, setLiveFeedEmbedAllowed] = useState(true);
@@ -1587,7 +1601,7 @@ export default function Dashboard() {
           <AnimatePresence>
             {showDesktopSearch && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80">
-                <SearchBar alwaysExpanded onLocate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, zoom, ts: Date.now() }); setShowDesktopSearch(false); }} />
+                <SearchBar alwaysExpanded onLayers={applyLayers} onLocate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, zoom, ts: Date.now() }); setShowDesktopSearch(false); }} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1843,7 +1857,7 @@ export default function Dashboard() {
                   {mobilePanel === 'intel' && <IntelFeed data={data} onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobilePanel(null); }} />}
                   {mobilePanel === 'search' && (
                     <div className="space-y-2">
-                      <SearchBar onLocate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, zoom, ts: Date.now() }); setMobilePanel(null); }} />
+                      <SearchBar onLayers={applyLayers} onLocate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, zoom, ts: Date.now() }); setMobilePanel(null); }} />
                       <SharePanel mapView={mapView} activeLayers={activeLayers} mouseCoords={null} />
                     </div>
                   )}

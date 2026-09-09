@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  parseCommand, buildGazetteer, lookupPlace, COMMAND_LAYER_KEYS,
+  parseCommand, buildGazetteer, lookupPlace, layerLabel, createGazetteerLoader,
+  COMMAND_LAYER_KEYS, COMMAND_LAYER_LABELS, OFFLINE_GAZETTEER_FILES,
 } from './commands';
 
 describe('parseCommand', () => {
@@ -75,6 +76,24 @@ describe('parseCommand', () => {
     expect(real.size).toBeGreaterThan(20); // the scrape itself still works
     const unknown = COMMAND_LAYER_KEYS.filter(k => !real.has(k));
     expect(unknown).toEqual([]);
+  });
+
+  /** Same guard for the wording: the search bar echoes the panel's label back,
+   *  and the two must not drift apart. */
+  it('names each layer exactly as LayerPanel does', () => {
+    const panel = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/LayerPanel.tsx'), 'utf8',
+    );
+    const real = new Map(
+      [...panel.matchAll(/\{ key: '([a-z0-9_]+)', label: '([^']+)'/g)].map(m => [m[1], m[2]]),
+    );
+    expect(real.size).toBeGreaterThan(20);
+    const drift = COMMAND_LAYER_KEYS
+      .filter(k => real.get(k) !== COMMAND_LAYER_LABELS[k])
+      .map(k => `${k}: parser says "${COMMAND_LAYER_LABELS[k]}", panel says "${real.get(k)}"`);
+    expect(drift).toEqual([]);
+    expect(layerLabel('fires')).toBe('Active Fires');
+    expect(layerLabel('no_such_layer')).toBe('no_such_layer');
   });
 });
 
@@ -171,5 +190,51 @@ describe('offline gazetteer', () => {
   it('copes with a missing or empty source', () => {
     expect(buildGazetteer(null, null)).toEqual([]);
     expect(buildGazetteer({}, {})).toEqual([]);
+  });
+});
+
+describe('gazetteer loader', () => {
+  const files: Record<string, unknown> = {
+    [OFFLINE_GAZETTEER_FILES.countries]: {
+      features: [{ properties: { NAME: 'Kenya' }, geometry: { type: 'Polygon', coordinates: [[[34, -4], [42, -4], [42, 4], [34, 4], [34, -4]]] } }],
+    },
+    [OFFLINE_GAZETTEER_FILES.places]: {
+      features: [{ properties: { NAME: 'Nairobi' }, geometry: { type: 'Point', coordinates: [36.8, -1.28] } }],
+    },
+    [OFFLINE_GAZETTEER_FILES.regions]: { features: [] },
+  };
+  const fakeFetch = (log: string[]) => async (url: string) => {
+    log.push(url);
+    const body = files[url];
+    return { ok: body !== undefined, json: async () => body };
+  };
+
+  it('fetches the three basemap files once and keeps the result', async () => {
+    const log: string[] = [];
+    const load = createGazetteerLoader(fakeFetch(log));
+    const a = await load();
+    const b = await load();
+    expect(a.map(e => e.name).sort()).toEqual(['Kenya', 'Nairobi']);
+    expect(b).toBe(a);
+    expect(log.length).toBe(3);
+  });
+
+  it('gives an empty gazetteer, not an error, when the files are not there', async () => {
+    // A fresh checkout before tools/fetch-offline-basemap.mjs has been run.
+    const load = createGazetteerLoader(async () => ({ ok: false, json: async () => null }));
+    await expect(load()).resolves.toEqual([]);
+    const broken = createGazetteerLoader(async () => { throw new Error('offline'); });
+    await expect(broken()).resolves.toEqual([]);
+  });
+
+  it('tries again after an empty result rather than caching the failure', async () => {
+    let ready = false;
+    const load = createGazetteerLoader(async (url: string) => ({
+      ok: ready && files[url] !== undefined,
+      json: async () => files[url],
+    }));
+    expect(await load()).toEqual([]);
+    ready = true;
+    expect((await load()).length).toBe(2);
   });
 });

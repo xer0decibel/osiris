@@ -1,12 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, X, MapPin, Navigation, Building2, Globe2, Landmark } from 'lucide-react';
+import { Search, X, MapPin, Navigation, Building2, Globe2, Landmark, Layers } from 'lucide-react';
+import { parseCommand, layerLabel, lookupPlace, loadOfflineGazetteer, type GazetteerEntry } from '@/lib/commands';
 
 /* ═══════════════════════════════════════════════════════════════
    OSIRIS — Enhanced Search / Locate Bar
    Street-level geocoding with intelligent zoom levels
    Ctrl+F / Cmd+F keyboard shortcut support
+
+   The same box also takes commands — "fires in oregon" switches the
+   fire layer on and flies to Oregon — and resolves places from the
+   bundled gazetteer when the geocoder is unreachable. See lib/commands.
    ═══════════════════════════════════════════════════════════════ */
 
 interface SearchResult {
@@ -17,10 +22,28 @@ interface SearchResult {
   importance: number;    // nominatim importance score
   category: string;      // nominatim class (e.g. 'place', 'highway', 'building')
   zoomLevel: number;     // computed ideal zoom
+  /** Set on the row a typed command produces: the layers to switch, and the
+   *  place text, if any, that is still being resolved into a location. */
+  command?: { layers: string[]; on: boolean; place: string | null };
+  /** Set when the row came from the bundled gazetteer rather than Nominatim. */
+  offline?: boolean;
+}
+
+/** The fields of a Nominatim `format=json` row this component reads. */
+interface NominatimRow {
+  display_name: string;
+  lat: string;
+  lon: string;
+  type?: string;
+  class?: string;
+  importance?: number;
+  boundingbox?: string[];
 }
 
 interface SearchBarProps {
   onLocate: (lat: number, lng: number, zoom?: number) => void;
+  /** Switch layers on or off by key. Without it, typed commands are not offered. */
+  onLayers?: (layers: string[], on: boolean) => void;
   alwaysExpanded?: boolean;
 }
 
@@ -61,6 +84,9 @@ function getZoomForType(type: string, category: string, boundingbox?: string[]):
 
 // Icon for result type
 function getResultIcon(type: string, category: string) {
+  if (category === 'command') {
+    return <Layers className="w-3 h-3 text-[var(--gold-primary)] flex-shrink-0" />;
+  }
   if (['house', 'building', 'address', 'shop', 'amenity', 'office'].includes(type) || category === 'building') {
     return <Building2 className="w-3 h-3 text-[var(--cyan-primary)] flex-shrink-0" />;
   }
@@ -86,7 +112,57 @@ function formatLabel(displayName: string): { primary: string; secondary: string 
   };
 }
 
-export default function SearchBar({ onLocate, alwaysExpanded = false }: SearchBarProps) {
+/** A gazetteer hit as a result row. Its zoom is the entry's own — a country
+ *  wants a wider view than a city — and its type is named for the icon. */
+function gazetteerRow(hit: GazetteerEntry): SearchResult {
+  const type = hit.zoom <= 4 ? 'country' : hit.zoom <= 5 ? 'state' : 'city';
+  return {
+    label: hit.name,
+    lat: hit.lat,
+    lng: hit.lng,
+    type,
+    importance: 0,
+    category: 'gazetteer',
+    zoomLevel: hit.zoom,
+    offline: true,
+  };
+}
+
+/**
+ * Nominatim when it answers, the bundled gazetteer when it does not. Both an
+ * unreachable geocoder and a geocoder with no match fall through, so a
+ * misspelt street offline gives nothing rather than an error, and a country
+ * name gives the country either way.
+ */
+async function geocodePlace(place: string): Promise<SearchResult[]> {
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  if (!offline) {
+    try {
+      // Use addressdetails=1 for better type detection and limit=8 for more results
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&limit=8&addressdetails=1&extratags=1`,
+        { headers: { 'Accept-Language': 'en', 'User-Agent': 'OSIRIS-Intelligence-Platform/1.0' } }
+      );
+      if (res.ok) {
+        const data: NominatimRow[] = await res.json();
+        const rows: SearchResult[] = (Array.isArray(data) ? data : []).map(r => ({
+          label: r.display_name,
+          lat: parseFloat(r.lat),
+          lng: parseFloat(r.lon),
+          type: r.type || 'unknown',
+          importance: r.importance || 0,
+          category: r.class || 'unknown',
+          zoomLevel: getZoomForType(r.type ?? '', r.class ?? '', r.boundingbox),
+        }));
+        if (rows.length) return rows;
+      }
+    } catch { /* unreachable: fall through to the gazetteer */ }
+  }
+  const hit = lookupPlace(await loadOfflineGazetteer(), place);
+  return hit ? [gazetteerRow(hit)] : [];
+}
+
+export default function SearchBar({ onLocate, onLayers, alwaysExpanded = false }: SearchBarProps) {
   const [open, setOpen] = useState(alwaysExpanded);
   const [value, setValue] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -95,11 +171,21 @@ export default function SearchBar({ onLocate, alwaysExpanded = false }: SearchBa
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  /* Each keystroke and each selection bumps this; a geocode that comes back
+     for an older number is dropped instead of overwriting newer results. */
+  const seqRef = useRef(0);
 
   // Focus input when opened
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  // With no network, warm the gazetteer while the operator is still typing.
+  useEffect(() => {
+    if (open && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      void loadOfflineGazetteer();
     }
   }, [open]);
 
@@ -141,9 +227,11 @@ export default function SearchBar({ onLocate, alwaysExpanded = false }: SearchBa
     return null;
   };
 
-  const handleSearch = useCallback(async (q: string) => {
+  const handleSearch = useCallback((q: string) => {
     setValue(q);
     setSelectedIdx(-1);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const seq = ++seqRef.current;
 
     // Direct coordinate input
     const coords = parseCoords(q);
@@ -159,41 +247,55 @@ export default function SearchBar({ onLocate, alwaysExpanded = false }: SearchBa
       return;
     }
 
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (q.trim().length < 2) { setResults([]); return; }
+    /* A line that names a layer becomes a command row straight away, with no
+       debounce and no network; whatever it left over is the place to geocode.
+       A line that names no layer is geocoded whole, exactly as before. */
+    const cmd = parseCommand(q);
+    const commandRow: SearchResult[] = onLayers && cmd.layers.length ? [{
+      label: `${cmd.off ? 'HIDE' : 'SHOW'} ${cmd.layers.map(layerLabel).join(' + ').toUpperCase()}`,
+      lat: 0,
+      lng: 0,
+      type: 'command',
+      importance: 1,
+      category: 'command',
+      zoomLevel: 0,
+      command: { layers: cmd.layers, on: !cmd.off, place: cmd.place },
+    }] : [];
+    const place = commandRow.length ? cmd.place : q.trim();
+    setResults(commandRow);
+    if (!place || place.length < 2) { setLoading(false); return; }
 
     timerRef.current = setTimeout(async () => {
       setLoading(true);
-      try {
-        // Use addressdetails=1 for better type detection and limit=8 for more results
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1&extratags=1`,
-          { headers: { 'Accept-Language': 'en', 'User-Agent': 'OSIRIS-Intelligence-Platform/1.0' } }
-        );
-        const data = await res.json();
-        setResults(data.map((r: any) => {
-          const zoom = getZoomForType(r.type, r.class, r.boundingbox);
-          return {
-            label: r.display_name,
-            lat: parseFloat(r.lat),
-            lng: parseFloat(r.lon),
-            type: r.type || 'unknown',
-            importance: r.importance || 0,
-            category: r.class || 'unknown',
-            zoomLevel: zoom,
-          };
-        }));
-      } catch { setResults([]); }
+      const rows = await geocodePlace(place);
+      if (seq !== seqRef.current) return; // superseded by later typing or a selection
+      setResults([...commandRow, ...rows]);
       setLoading(false);
     }, 300);
-  }, []);
+  }, [onLayers]);
 
-  const handleSelect = (r: SearchResult) => {
-    onLocate(r.lat, r.lng, r.zoomLevel);
+  const handleSelect = async (r: SearchResult) => {
+    seqRef.current++; // anything still in flight is for a search that no longer exists
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setLoading(false);
     if (!alwaysExpanded) setOpen(false);
     setValue('');
     setResults([]);
     setSelectedIdx(-1);
+
+    if (!r.command) {
+      onLocate(r.lat, r.lng, r.zoomLevel);
+      return;
+    }
+    onLayers?.(r.command.layers, r.command.on);
+    /* The place, if the line had one: the geocoder's first answer when it has
+       arrived, otherwise the gazetteer, which answers at once and offline. */
+    let target = results.find(x => !x.command) ?? null;
+    if (!target && r.command.place) {
+      const hit = lookupPlace(await loadOfflineGazetteer(), r.command.place);
+      if (hit) target = gazetteerRow(hit);
+    }
+    if (target) onLocate(target.lat, target.lng, target.zoomLevel);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -249,7 +351,7 @@ export default function SearchBar({ onLocate, alwaysExpanded = false }: SearchBa
           value={value}
           onChange={(e) => handleSearch(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="SEARCH ADDRESS, CITY, OR COORDINATES..."
+          placeholder={onLayers ? "PLACE, COORDS, OR 'FIRES IN OREGON'..." : 'SEARCH ADDRESS, CITY, OR COORDINATES...'}
           className="flex-1 bg-transparent text-[11px] text-[var(--text-primary)] font-mono tracking-wider outline-none placeholder:text-[var(--text-muted)]"
           autoComplete="off"
           spellCheck={false}
@@ -272,7 +374,11 @@ export default function SearchBar({ onLocate, alwaysExpanded = false }: SearchBa
           style={{ boxShadow: '0 12px 40px rgba(0,0,0,0.6), 0 0 1px rgba(212,175,55,0.2)' }}
         >
           {results.map((r, i) => {
-            const { primary, secondary } = formatLabel(r.label);
+            const { primary, secondary } = r.command
+              ? { primary: r.label, secondary: r.command.place ? `THEN GO TO ${r.command.place.toUpperCase()}` : '' }
+              : r.offline
+                ? { primary: r.label, secondary: 'OFFLINE GAZETTEER' }
+                : formatLabel(r.label);
             const isSelected = i === selectedIdx;
             return (
               <button
@@ -292,10 +398,10 @@ export default function SearchBar({ onLocate, alwaysExpanded = false }: SearchBa
                 </div>
                 <div className="flex flex-col items-end flex-shrink-0">
                   <span className="text-[9px] text-[var(--text-muted)] font-mono uppercase tracking-wider">
-                    {r.type === 'coordinate' ? 'COORDS' : r.type}
+                    {r.type === 'coordinate' ? 'COORDS' : r.command ? 'CMD' : r.type}
                   </span>
                   <span className="text-[9px] text-[var(--gold-primary)] font-mono opacity-40">
-                    Z{r.zoomLevel}
+                    {r.command ? `${r.command.layers.length} LAYER${r.command.layers.length === 1 ? '' : 'S'}` : `Z${r.zoomLevel}`}
                   </span>
                 </div>
               </button>

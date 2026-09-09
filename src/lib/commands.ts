@@ -17,6 +17,9 @@
 /** A layer the parser can turn on, and the words a person might use for it. */
 interface LayerTerm {
   key: string;
+  /** The panel's own wording, so the search bar and the panel agree on a name.
+   *  Asserted against LayerPanel in the tests, like the keys. */
+  label: string;
   /** Lowercase. Longest match wins, so put specific phrases before loose words. */
   words: string[];
 }
@@ -28,31 +31,31 @@ interface LayerTerm {
  * silently becoming a command that does nothing.
  */
 const LAYER_TERMS: LayerTerm[] = [
-  { key: 'fire_perimeters', words: ['fire perimeters', 'perimeters', 'burn scar', 'fire outline'] },
-  { key: 'fire_incidents', words: ['fire incidents', 'named fires', 'wildfires', 'incidents'] },
-  { key: 'fires', words: ['fires', 'fire', 'wildfire', 'hotspots', 'burning', 'firms'] },
-  { key: 'wx_radar', words: ['radar', 'precipitation', 'rain', 'storms', 'weather radar'] },
-  { key: 'wx_clouds', words: ['clouds', 'cloud', 'satellite imagery', 'cloud cover'] },
-  { key: 'weather', words: ['severe weather', 'cyclone', 'hurricane', 'typhoon'] },
-  { key: 'earthquakes', words: ['earthquakes', 'earthquake', 'quakes', 'quake', 'seismic'] },
-  { key: 'radio', words: ['radio stations', 'radio', 'stations', 'broadcast radio'] },
-  { key: 'tv', words: ['tv channels', 'tv', 'television', 'channels'] },
-  { key: 'cctv', words: ['cctv', 'cameras', 'camera', 'webcams', 'surveillance'] },
-  { key: 'live_news', words: ['live news', 'news feeds', 'news'] },
-  { key: 'flights', words: ['commercial flights', 'flights', 'aircraft', 'planes', 'aviation'] },
-  { key: 'military', words: ['military flights', 'military aircraft', 'military'] },
-  { key: 'jets', words: ['private jets', 'jets'] },
-  { key: 'maritime', words: ['maritime', 'ships', 'shipping', 'vessels', 'naval'] },
-  { key: 'satellites', words: ['satellites', 'satellite', 'orbits'] },
-  { key: 'sat_comms', words: ['starlink', 'comms satellites'] },
-  { key: 'infrastructure', words: ['nuclear', 'reactors', 'nuclear facilities'] },
-  { key: 'malware', words: ['malware'] },
-  { key: 'cyber_attacks', words: ['cyber attacks', 'cyber', 'attacks'] },
-  { key: 'cf_outages', words: ['outages', 'internet outages'] },
-  { key: 'global_incidents', words: ['global incidents', 'conflicts', 'conflict'] },
-  { key: 'day_night', words: ['day night', 'terminator', 'daylight'] },
-  { key: 'terrain_elevation', words: ['3d terrain', 'terrain', 'elevation', 'mountains'] },
-  { key: 'terrain_3d', words: ['3d buildings', 'buildings'] },
+  { key: 'fire_perimeters', label: 'Fire Perimeters', words: ['fire perimeters', 'perimeters', 'burn scar', 'fire outline'] },
+  { key: 'fire_incidents', label: 'Named Incidents', words: ['fire incidents', 'named fires', 'wildfires', 'incidents'] },
+  { key: 'fires', label: 'Active Fires', words: ['fires', 'fire', 'wildfire', 'hotspots', 'burning', 'firms'] },
+  { key: 'wx_radar', label: 'Precipitation Radar', words: ['radar', 'precipitation', 'rain', 'storms', 'weather radar'] },
+  { key: 'wx_clouds', label: 'Cloud Imagery', words: ['clouds', 'cloud', 'satellite imagery', 'cloud cover'] },
+  { key: 'weather', label: 'Severe Weather', words: ['severe weather', 'cyclone', 'hurricane', 'typhoon'] },
+  { key: 'earthquakes', label: 'Earthquakes', words: ['earthquakes', 'earthquake', 'quakes', 'quake', 'seismic'] },
+  { key: 'radio', label: 'Radio Stations', words: ['radio stations', 'radio', 'stations', 'broadcast radio'] },
+  { key: 'tv', label: 'TV Channels', words: ['tv channels', 'tv', 'television', 'channels'] },
+  { key: 'cctv', label: 'CCTV Cameras', words: ['cctv', 'cameras', 'camera', 'webcams', 'surveillance'] },
+  { key: 'live_news', label: 'Live News Feeds', words: ['live news', 'news feeds', 'news'] },
+  { key: 'flights', label: 'Commercial', words: ['commercial flights', 'flights', 'aircraft', 'planes', 'aviation'] },
+  { key: 'military', label: 'Military', words: ['military flights', 'military aircraft', 'military'] },
+  { key: 'jets', label: 'Private Jets', words: ['private jets', 'jets'] },
+  { key: 'maritime', label: 'Maritime / Naval', words: ['maritime', 'ships', 'shipping', 'vessels', 'naval'] },
+  { key: 'satellites', label: 'All Satellites', words: ['satellites', 'satellite', 'orbits'] },
+  { key: 'sat_comms', label: 'Starlink / Comms', words: ['starlink', 'comms satellites'] },
+  { key: 'infrastructure', label: 'Nuclear Facilities', words: ['nuclear', 'reactors', 'nuclear facilities'] },
+  { key: 'malware', label: 'Live Malware', words: ['malware'] },
+  { key: 'cyber_attacks', label: 'Live Attacks', words: ['cyber attacks', 'cyber', 'attacks'] },
+  { key: 'cf_outages', label: 'Internet Outages', words: ['outages', 'internet outages'] },
+  { key: 'global_incidents', label: 'Global Incidents', words: ['global incidents', 'conflicts', 'conflict'] },
+  { key: 'day_night', label: 'Day / Night Cycle', words: ['day night', 'terminator', 'daylight'] },
+  { key: 'terrain_elevation', label: '3D Terrain', words: ['3d terrain', 'terrain', 'elevation', 'mountains'] },
+  { key: 'terrain_3d', label: '3D Buildings', words: ['3d buildings', 'buildings'] },
 ];
 
 /** Words that only ever join a layer to a place, and are never a place. */
@@ -106,6 +109,11 @@ export function parseCommand(query: string): ParsedCommand {
     .trim();
 
   return { layers, place: rest || null, off };
+}
+
+/** The panel's name for a layer the parser emitted, for showing the command back. */
+export function layerLabel(key: string): string {
+  return LAYER_TERMS.find(t => t.key === key)?.label ?? key;
 }
 
 /* ── Offline gazetteer ──────────────────────────────────────────────────────
@@ -226,5 +234,58 @@ export function lookupPlace(gazetteer: GazetteerEntry[], query: string): Gazette
   );
 }
 
+/* ── Loading it in the browser ──────────────────────────────────────────────
+   The same three files the offline basemap style draws from, so on the drive
+   they are already on disk and, when that basemap is up, already in the HTTP
+   cache. Countries is the big one at 1.9MB — fine from a local disk, which is
+   the only place this is meant to run — so it is fetched once, lazily, and the
+   result kept for the life of the page. */
+
+export const OFFLINE_GAZETTEER_FILES = {
+  countries: '/offline/countries.geojson',
+  places: '/offline/places.geojson',
+  regions: '/offline/states.geojson',
+} as const;
+
+type FetchLike = (url: string) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
+
+/**
+ * A loader with its own cache. Never rejects: a file that is missing — a fresh
+ * checkout before tools/fetch-offline-basemap.mjs has been run — simply
+ * contributes nothing, and an empty result is not cached so a later call can
+ * try again.
+ */
+export function createGazetteerLoader(fetchImpl: FetchLike): () => Promise<GazetteerEntry[]> {
+  let pending: Promise<GazetteerEntry[]> | null = null;
+  const get = async (url: string) => {
+    try {
+      const res = await fetchImpl(url);
+      return res.ok ? ((await res.json()) as { features?: FeatureLike[] }) : null;
+    } catch {
+      return null;
+    }
+  };
+  return () => {
+    if (pending) return pending;
+    pending = (async () => {
+      const [countries, places, regions] = await Promise.all([
+        get(OFFLINE_GAZETTEER_FILES.countries),
+        get(OFFLINE_GAZETTEER_FILES.places),
+        get(OFFLINE_GAZETTEER_FILES.regions),
+      ]);
+      const g = buildGazetteer(countries, places, regions);
+      if (g.length === 0) pending = null;
+      return g;
+    })();
+    return pending;
+  };
+}
+
+/** The page-wide instance. Resolves `fetch` at call time, not import time, so
+ *  importing this module in a test or on the server costs nothing. */
+export const loadOfflineGazetteer = createGazetteerLoader(url => fetch(url));
+
 /** Exported for the tests, which assert every key against the layer registry. */
 export const COMMAND_LAYER_KEYS = [...new Set(LAYER_TERMS.map(t => t.key))];
+/** Likewise for the labels. */
+export const COMMAND_LAYER_LABELS: Record<string, string> = Object.fromEntries(LAYER_TERMS.map(t => [t.key, t.label]));
