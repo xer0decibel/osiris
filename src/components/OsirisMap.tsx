@@ -149,6 +149,8 @@ function OsirisMap({
   const mapRef = useRef<maplibregl.Map | null>(null);
   /** The border files are two megabytes; they are fetched the first time the temperature layer is on, not at start. */
   const wxBordersLoaded = useRef(false);
+  /** Which of the two band faces is showing. A new field is put on the other and the two dissolve. */
+  const wxFace = useRef<'a' | 'b'>('a');
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [startupStatus, setStartupStatus] = useState<MapStartupStatus>('loading');
@@ -466,11 +468,16 @@ function OsirisMap({
          the map shows through. No outlines: the colour is the picture. Over it,
          white country and state borders from the offline basemap's own files
          (Natural Earth, fetched by tools/fetch-offline-basemap.mjs), so the
-         colour can be read against places; absent the files, no borders. */
-      map.addSource('wx-isotherms', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({ id: 'wx-isotherm-fill', type: 'fill', source: 'wx-isotherms', layout: { visibility: 'none' }, paint: {
-        'fill-color': tempColorExpression() as maplibregl.ExpressionSpecification, 'fill-opacity': 0.45,
-      }});
+         colour can be read against places; absent the files, no borders.
+         Two identical faces: a new field is loaded on the hidden one and the
+         opacities cross, so an update is a dissolve rather than a snap —
+         MapLibre transitions paint, not data. */
+      for (const face of ['a', 'b'] as const) {
+        map.addSource(`wx-isotherms-${face}`, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        map.addLayer({ id: `wx-isotherm-fill-${face}`, type: 'fill', source: `wx-isotherms-${face}`, layout: { visibility: 'none' }, paint: {
+          'fill-color': tempColorExpression() as maplibregl.ExpressionSpecification, 'fill-opacity': 0, 'fill-opacity-transition': { duration: 700, delay: 0 },
+        }});
+      }
       map.addSource('wx-border-countries', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addSource('wx-border-states', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'wx-border-state', type: 'line', source: 'wx-border-states', minzoom: 3, layout: { visibility: 'none' }, paint: {
@@ -2431,19 +2438,37 @@ function OsirisMap({
     map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': 0.85 } }, before);
   }, [mapReady, activeLayers.traffic]);
 
-  // Temperature field → isotherm bands, with the borders drawn over them
+  // Temperature field → isotherm bands, dissolving in, with the borders drawn over them
   useEffect(() => {
     if (!mapReady) return;
     const map = mapRef.current;
-    if (map && activeLayers.wx_temp && !wxBordersLoaded.current) {
+    if (!map) return;
+    if (activeLayers.wx_temp && !wxBordersLoaded.current) {
       wxBordersLoaded.current = true;
       (map.getSource('wx-border-countries') as maplibregl.GeoJSONSource | undefined)?.setData('/offline/countries.geojson');
       (map.getSource('wx-border-states') as maplibregl.GeoJSONSource | undefined)?.setData('/offline/states.geojson');
     }
-    setGeo('wx-isotherms', temperatureField?.features ?? []);
     setGeo('wx-stations', temperatureStations?.features ?? []);
-    setVis(['wx-isotherm-fill', 'wx-border-state', 'wx-border-country'], Boolean(activeLayers.wx_temp && temperatureField));
     setVis(['wx-station-dots', 'wx-station-label'], Boolean(activeLayers.wx_temp && temperatureStations));
+    const on = Boolean(activeLayers.wx_temp && temperatureField);
+    setVis(['wx-border-state', 'wx-border-country'], on);
+    const showing = wxFace.current, next = showing === 'a' ? 'b' : 'a';
+    if (!on) {
+      if (map.getLayer(`wx-isotherm-fill-${showing}`)) map.setPaintProperty(`wx-isotherm-fill-${showing}`, 'fill-opacity', 0);
+      return;
+    }
+    setVis(['wx-isotherm-fill-a', 'wx-isotherm-fill-b'], true);
+    setGeo(`wx-isotherms-${next}`, temperatureField!.features);
+    wxFace.current = next;
+    /* The dissolve waits for the new data to be tiled and drawn, or the
+       face would fade in empty and the bands would pop in afterwards. */
+    const dissolve = () => {
+      if (wxFace.current !== next || !map.getLayer(`wx-isotherm-fill-${next}`)) return;
+      map.setPaintProperty(`wx-isotherm-fill-${next}`, 'fill-opacity', 0.45);
+      map.setPaintProperty(`wx-isotherm-fill-${showing}`, 'fill-opacity', 0);
+    };
+    map.once('idle', dissolve);
+    return () => { map.off('idle', dissolve); };
   }, [mapReady, temperatureField, temperatureStations, activeLayers.wx_temp, setGeo, setVis]);
 
   // Named fire incidents → GeoJSON
