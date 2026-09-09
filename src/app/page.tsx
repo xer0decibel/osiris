@@ -34,7 +34,6 @@ const SpaceCam = dynamic(() => import('@/components/SpaceCam'), { ssr: false });
 const CameraViewer = dynamic(() => import('@/components/CameraViewer'));
 const RadioPlayer = dynamic(() => import('@/components/RadioPlayer'));
 const TvViewer = dynamic(() => import('@/components/TvViewer'));
-const WeatherRadarBar = dynamic(() => import('@/components/WeatherRadarBar'));
 const OsintPanel = dynamic(() => import('@/components/OsintPanel'));
 const DrawingToolbar = dynamic(() => import('@/components/DrawingToolbar'), { ssr: false });
 const DrawHud = dynamic(() => import('@/components/DrawHud'), { ssr: false });
@@ -869,6 +868,17 @@ export default function Dashboard() {
       : null,
     clouds: activeLayers.wx_clouds ? wxCloudUrl : null,
   }), [activeLayers.wx_radar, activeLayers.wx_clouds, wxFrames, wxIndex, wxCloudUrl]);
+
+  /* The radar animates on its own while it is on: thirteen frames over two
+     hours, held 550ms each. There is no scrubber — the layer is on or off, and
+     the direction a front is moving only exists across frames, so a still
+     would be the least useful thing radar can be. Re-armed per frame rather
+     than one interval, so a change in the frame set restarts cleanly. */
+  useEffect(() => {
+    if (!activeLayers.wx_radar || wxFrames.length < 2) return;
+    const t = setTimeout(() => setWxIndex(i => (i + 1) % wxFrames.length), 550);
+    return () => clearTimeout(t);
+  }, [activeLayers.wx_radar, wxFrames.length, wxIndex]);
 
   /* ── LIVE MALWARE — pushed over SSE while the layer is on ──
      Detections arrive when URLhaus reports them rather than on a timer, so
@@ -1919,9 +1929,6 @@ export default function Dashboard() {
       />
 
       {/* Precipitation radar timeline */}
-      {activeLayers.wx_radar && wxFrames.length > 0 && (
-        <WeatherRadarBar frames={wxFrames} index={wxIndex} onIndexChange={setWxIndex} onClose={() => applyLayers(['wx_radar'], false)} />
-      )}
 
       {/* Live TV */}
       <TvViewer
