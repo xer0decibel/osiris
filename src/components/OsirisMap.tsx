@@ -10,6 +10,7 @@ import { STYLE_EVENT } from '@/lib/style-tokens';
 import { arrivalBeacons } from '@/lib/malware-intel';
 import SatelliteCard, { type SatelliteDetail } from '@/components/SatelliteCard';
 import { tempColorExpression } from '@/lib/isotherms';
+import { imageCorners, type TempImage } from '@/lib/temperature-raster';
 import CctvPreviews, { type PreviewCamera } from '@/components/CctvPreviews';
 import MapControls from '@/components/MapControls';
 import LiveNewsPreviews, { type PreviewFeed } from '@/components/LiveNewsPreviews';
@@ -38,8 +39,8 @@ interface OsirisMapProps {
   /** Raster weather overlays. Tile templates, or null to take the layer down.
    *  The radar URL changes as the animation steps through its frames. */
   weatherTiles?: { radar: string | null; clouds: string | null };
-  /** Isotherm bands for the view — see lib/isotherms. Null while the layer is off. */
-  temperatureField?: { type: 'FeatureCollection'; features: unknown[] } | null;
+  /** The temperature field painted for the view — see lib/temperature-raster. Null while the layer is off. */
+  temperatureImage?: TempImage | null;
   /** NOAA stations the field was nudged toward, as points with a label. */
   temperatureStations?: { type: 'FeatureCollection'; features: unknown[] } | null;
   onEntityClick?: (entity: any) => void;
@@ -144,7 +145,7 @@ const GLYPH_PX = 32;
 const GLYPH_RATIO = 2;
 
 function OsirisMap({
- data, activeLayers, weatherTiles, temperatureField = null, temperatureStations = null, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
+ data, activeLayers, weatherTiles, temperatureImage = null, temperatureStations = null, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   /** The border files are two megabytes; they are fetched the first time the temperature layer is on, not at start. */
@@ -462,10 +463,10 @@ function OsirisMap({
 
 
       // Day/Night
-      /* ISOTHERMS — the temperature field as bands, under the day/night shading
-         and every data layer. The bands do not overlap (lib/isotherms cuts each
-         region out of the one below), so the one fill opacity is how much of
-         the map shows through. No outlines: the colour is the picture. Over it,
+      /* TEMPERATURE — the field as a picture (lib/temperature-raster), under the
+         day/night shading and every data layer; one raster opacity is how much
+         of the map shows through. It was contour polygons, and on the globe
+         those kept tessellating into stray triangles. Over it,
          white country and state borders from the offline basemap's own files
          (Natural Earth, fetched by tools/fetch-offline-basemap.mjs), so the
          colour can be read against places; absent the files, no borders.
@@ -473,9 +474,9 @@ function OsirisMap({
          opacities cross, so an update is a dissolve rather than a snap —
          MapLibre transitions paint, not data. */
       for (const face of ['a', 'b'] as const) {
-        map.addSource(`wx-isotherms-${face}`, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-        map.addLayer({ id: `wx-isotherm-fill-${face}`, type: 'fill', source: `wx-isotherms-${face}`, layout: { visibility: 'none' }, paint: {
-          'fill-color': tempColorExpression() as maplibregl.ExpressionSpecification, 'fill-opacity': 0, 'fill-opacity-transition': { duration: 700, delay: 0 },
+        map.addSource(`wx-temp-${face}`, { type: 'image', coordinates: [[-1, 1], [1, 1], [1, -1], [-1, -1]] } as maplibregl.ImageSourceSpecification);
+        map.addLayer({ id: `wx-temp-raster-${face}`, type: 'raster', source: `wx-temp-${face}`, layout: { visibility: 'none' }, paint: {
+          'raster-opacity': 0, 'raster-opacity-transition': { duration: 700, delay: 0 }, 'raster-fade-duration': 0, 'raster-resampling': 'linear',
         }});
       }
       map.addSource('wx-border-countries', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -2438,7 +2439,7 @@ function OsirisMap({
     map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': 0.85 } }, before);
   }, [mapReady, activeLayers.traffic]);
 
-  // Temperature field → isotherm bands, dissolving in, with the borders drawn over them
+  // Temperature field → picture, dissolving in, with the borders drawn over them
   useEffect(() => {
     if (!mapReady) return;
     const map = mapRef.current;
@@ -2450,14 +2451,16 @@ function OsirisMap({
     }
     setGeo('wx-stations', temperatureStations?.features ?? []);
     setVis(['wx-station-dots', 'wx-station-label'], Boolean(activeLayers.wx_temp && temperatureStations));
-    const on = Boolean(activeLayers.wx_temp && temperatureField);
+    const on = Boolean(activeLayers.wx_temp && temperatureImage);
     setVis(['wx-border-state', 'wx-border-country'], on);
     const faces = ['a', 'b'] as const;
-    const opacity = (face: 'a' | 'b', v: number) => { if (map.getLayer(`wx-isotherm-fill-${face}`)) map.setPaintProperty(`wx-isotherm-fill-${face}`, 'fill-opacity', v); };
+    const opacity = (face: 'a' | 'b', v: number) => { if (map.getLayer(`wx-temp-raster-${face}`)) map.setPaintProperty(`wx-temp-raster-${face}`, 'raster-opacity', v); };
     if (!on) { faces.forEach(f => opacity(f, 0)); return; }
     const next = wxFace.current === 'a' ? 'b' : 'a';
-    setVis(['wx-isotherm-fill-a', 'wx-isotherm-fill-b'], true);
-    setGeo(`wx-isotherms-${next}`, temperatureField!.features);
+    setVis(['wx-temp-raster-a', 'wx-temp-raster-b'], true);
+    const img = temperatureImage!;
+    const source = map.getSource(`wx-temp-${next}`) as maplibregl.ImageSource | undefined;
+    source?.updateImage({ image: new ImageData(img.data, img.width, img.height), coordinates: imageCorners(img.bbox) });
     wxFace.current = next;
     /* The dissolve waits for the new data to be tiled and drawn, or the
        face would fade in empty and the bands would pop in afterwards. It
@@ -2471,11 +2474,11 @@ function OsirisMap({
       done = true;
       faces.forEach(f => opacity(f, f === wxFace.current ? 0.45 : 0));
     };
-    const onSource = (e: { sourceId?: string; isSourceLoaded?: boolean }) => { if (e.sourceId === `wx-isotherms-${next}` && e.isSourceLoaded) dissolve(); };
+    const onSource = (e: { sourceId?: string; isSourceLoaded?: boolean }) => { if (e.sourceId === `wx-temp-${next}` && e.isSourceLoaded) dissolve(); };
     map.on('sourcedata', onSource);
     const fallback = window.setTimeout(dissolve, 1500);
     return () => { map.off('sourcedata', onSource); window.clearTimeout(fallback); dissolve(); };
-  }, [mapReady, temperatureField, temperatureStations, activeLayers.wx_temp, setGeo, setVis]);
+  }, [mapReady, temperatureImage, temperatureStations, activeLayers.wx_temp, setGeo, setVis]);
 
   // Named fire incidents → GeoJSON
   useEffect(() => {
@@ -2915,7 +2918,10 @@ function OsirisMap({
           existing.setTiles([mapStyle]);
         }
         if (!map.getLayer('satellite-layer')) {
-          map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, 'day-night-fill');
+          /* Under every layer of ours, not just the night shading: inserted
+             above the temperature picture it hid it, and imagery is a basemap. */
+          const first = ['conflict-icons', 'wx-temp-raster-a', 'day-night-fill'].find(id => map.getLayer(id));
+          map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, first);
         } else {
           map.setLayoutProperty('satellite-layer', 'visibility', 'visible');
         }

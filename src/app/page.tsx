@@ -31,7 +31,8 @@ import WorldRemote from '@/components/WorldRemote';
 import ArcGISPanel from '@/components/ArcGISPanel';
 import NearbyLayers from '@/components/NearbyLayers';
 import TemperatureLegend from '@/components/TemperatureLegend';
-import { isothermBands, formatTemp, type TempUnit } from '@/lib/isotherms';
+import { formatTemp, type TempUnit } from '@/lib/isotherms';
+import { paintField } from '@/lib/temperature-raster';
 import { blendWithStations } from '@/lib/temperature-blend';
 import type { Station } from '@/lib/nws-stations';
 import { padBbox, snapBbox, bboxContains, type TempGrid } from '@/lib/temperature-grid';
@@ -1023,13 +1024,11 @@ export default function Dashboard() {
     }, tempGlobal ? 300 : 1500);
     return () => { cancelled = true; clearTimeout(t); };
   }, [tempKey, tempGlobal, wxTempRetry, wxTempGrid]);
-  /* Upsampled toward ~500 cells across whatever the grid is: six-fold for the
-     12-wide local grid, three-fold for the 180-wide globe. */
-  const temperatureField = useMemo(
-    () => (activeLayers.wx_temp && wxTempGrid
-      ? isothermBands(blendWithStations(wxTempGrid, wxStations), tempUnit, 2, Math.max(1, Math.min(6, Math.round(480 / Math.max(wxTempGrid.cols, wxTempGrid.rows)))))
-      : null),
-    [activeLayers.wx_temp, wxTempGrid, wxStations, tempUnit],
+  /* Painted, not contoured: every pixel samples the grid and takes its 2°C
+     band's colour. See lib/temperature-raster for why. */
+  const temperatureImage = useMemo(
+    () => (activeLayers.wx_temp && wxTempGrid ? paintField(blendWithStations(wxTempGrid, wxStations)) : null),
+    [activeLayers.wx_temp, wxTempGrid, wxStations],
   );
   const temperatureStations = useMemo(() => (activeLayers.wx_temp ? {
     type: 'FeatureCollection' as const,
@@ -1418,7 +1417,7 @@ export default function Dashboard() {
           mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : mapStyle === 'topo' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
           onEntityClick={handleEntityClick} 
           onMouseCoords={handleMouseCoords} 
-          temperatureField={temperatureField}
+          temperatureImage={temperatureImage}
           temperatureStations={temperatureStations}
           onRightClick={handleRightClick} 
           onViewStateChange={setMapView} 
