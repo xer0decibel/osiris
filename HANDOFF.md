@@ -318,10 +318,10 @@ The useful half of this document.
 
 ## Current state (end of session 2, 2026-09-09, evening)
 
-**732 tests pass**, typecheck clean, lint clean on every file added here, and
+**737 tests pass**, typecheck clean, lint clean on every file added here, and
 **no worse** on every upstream file touched: `page.tsx` 94, `OsirisMap.tsx`
 147, `LayerPanel.tsx` 8 (down from 9), `ArcGISPanel.tsx` 6 — the check to
-repeat after touching any of them. Working tree clean, 75 commits on
+repeat after touching any of them. Working tree clean, 78 commits on
 `feat/intel-layers`, nothing pushed. `npm run dev` on :3000.
 
 The commit chain that worked, for the next session to copy: `cd` into the
