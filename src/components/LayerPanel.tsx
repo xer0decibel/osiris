@@ -448,7 +448,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
       initial={{ x: -60, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ type: 'spring', damping: 30, stiffness: 200, delay: 2.8 }}
-      className="absolute top-0 left-0 h-full w-[48px] flex flex-col items-center pt-24 pb-6 z-50 pointer-events-auto"
+      className="absolute top-0 left-0 h-full w-[48px] flex flex-col items-center gap-1 pt-24 pb-6 z-50 pointer-events-auto"
       style={{
         background: 'rgba(0,0,0,0.15)',
         backdropFilter: 'blur(24px) saturate(1.2)',
@@ -459,10 +459,12 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
       {viewToggles && (
         <>
           <div className="flex flex-col items-center gap-1">{viewToggles}</div>
-          <div className="w-5 h-px bg-white/[0.06] my-2" />
+          <div className="w-5 h-px bg-white/[0.06] my-1" />
         </>
       )}
-      <div className="flex-1 flex flex-col items-center gap-1">
+      {/* One flow, one gap: the utilities below follow the groups at the same
+          spacing rather than being pushed to the foot of the rail. */}
+      <div className="flex flex-col items-center gap-1">
         {visibleGroups.map((group) => {
           /* Sub-layers modify a parent rather than draw anything of their own,
              so they do not count towards the rail's reading. */
@@ -489,7 +491,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                 onClick={() => setPinnedGroup(isPinned ? null : group.label)}
                 aria-expanded={isOpen}
                 aria-label={`${group.fullLabel}${activeCount ? ` — ${activeCount} active` : ''}`}
-                title={group.fullLabel}
+                title={`${group.fullLabel}${activeCount ? ` — ${activeCount} active` : ''}`}
                 className="relative w-10 h-10 flex items-center justify-center cursor-pointer rounded-lg transition-all duration-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
                 style={{
                   background: isPinned
@@ -502,29 +504,17 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
                   style={{
                     width: 16,
                     height: 16,
+                    /* The icon itself is the reading: lit cyan while anything
+                       in the group is on, the same cyan the badge used to be.
+                       The count survives in the title and the aria-label. */
                     color: groupActive
-                      ? 'rgba(255,255,255,0.75)'
+                      ? 'rgba(0,229,255,0.95)'
                       : isOpen
                         ? 'rgba(255,255,255,0.45)'
                         : 'rgba(255,255,255,0.22)',
-                    filter: groupActive ? 'drop-shadow(0 0 4px rgba(255,255,255,0.3))' : 'none',
+                    filter: groupActive ? 'drop-shadow(0 0 5px rgba(0,229,255,0.55))' : 'none',
                   }}
                 />
-
-                {/* How many layers in this group are live. Without it the rail
-                    gives no reading at all until each icon is hovered in turn. */}
-                {activeCount > 0 && (
-                  <span
-                    className="absolute top-1 right-1 min-w-[13px] h-[13px] px-[3px] rounded-full flex items-center justify-center text-[9px] font-mono tabular-nums leading-none"
-                    style={{
-                      background: 'rgba(0,229,255,0.9)',
-                      color: '#04040A',
-                      boxShadow: '0 0 6px rgba(0,229,255,0.5)',
-                    }}
-                  >
-                    {activeCount}
-                  </span>
-                )}
               </button>
 
               {/* Flyout (LEFT side) */}
@@ -606,7 +596,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, theme = 'co
       </div>
 
       {/* Subtle separator */}
-      <div className="w-5 h-px bg-white/[0.06] my-2" />
+      <div className="w-5 h-px bg-white/[0.06] my-1" />
 
       {/* Style Studio */}
       <button
