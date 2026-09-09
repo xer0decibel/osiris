@@ -91,7 +91,7 @@ export interface IsothermFeature {
  * undoes that, and the padded view the grid was sampled over becomes the
  * extent of the field.
  */
-export function isothermBands(grid: TempGrid, unit: TempUnit, stepC = 2, factor = 4): { type: 'FeatureCollection'; features: IsothermFeature[] } {
+export function isothermBands(grid: TempGrid, unit: TempUnit, stepC = 2, factor = 6): { type: 'FeatureCollection'; features: IsothermFeature[] } {
   const up = upsample(grid.values, grid.cols, grid.rows, factor);
   const thresholds = bandThresholds(up.values, stepC);
   const [w, s, e, n] = grid.bbox;

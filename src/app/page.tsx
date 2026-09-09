@@ -34,7 +34,7 @@ import TemperatureLegend from '@/components/TemperatureLegend';
 import { isothermBands, formatTemp, type TempUnit } from '@/lib/isotherms';
 import { blendWithStations } from '@/lib/temperature-blend';
 import type { Station } from '@/lib/nws-stations';
-import { padBbox, type TempGrid } from '@/lib/temperature-grid';
+import { padBbox, snapBbox, type TempGrid } from '@/lib/temperature-grid';
 import { NEARBY_CATEGORIES, NEARBY_SETTLE_MS, bboxParam, pickNearby, type NearbyResult } from '@/lib/arcgis-nearby';
 import FloatingWindow, { windowButtonClass, windowIconClass } from '@/components/FloatingWindow';
 const OsirisMap = dynamic(() => import('@/components/OsirisMap'), { ssr: false });
@@ -142,6 +142,9 @@ export default function Dashboard() {
   const [wxTempGrid, setWxTempGrid] = useState<TempGrid | null>(null);
   /* NOAA's thermometers inside the view, which the field is nudged toward. */
   const [wxStations, setWxStations] = useState<Station[]>([]);
+  /** Why the field is not current — a provider refusal, mostly — for the legend. */
+  const [wxTempNote, setWxTempNote] = useState<string | null>(null);
+  const [wxTempRetry, setWxTempRetry] = useState(0);
   const [tempUnit, setTempUnit] = useState<TempUnit>(() => {
     try { const s = typeof window !== 'undefined' ? window.localStorage.getItem('osiris:temp-unit') : null; return s === 'C' || s === 'F' ? s : 'F'; } catch { return 'F'; }
   });
@@ -967,10 +970,13 @@ export default function Dashboard() {
   }, [tempUnit]);
 
   /* One request per place the map settles, for a view padded by a fifth each
-     side so the bands run off the edges. The route caches ten minutes per
-     rounded view, so a nudge costs nothing. */
+     side so the bands run off the edges, then snapped outward to a lattice:
+     a pan that stays inside the same lattice cell asks for nothing new, and
+     the route answers from any fresh field that covers the view. The
+     provider's budget is spent per point, so a refusal is shown in the
+     legend and tried again, rather than swallowed. */
   const tempBounds = activeLayers.wx_temp ? mapCenter?.bounds ?? null : null;
-  const tempKey = tempBounds ? padBbox([tempBounds.west, tempBounds.south, tempBounds.east, tempBounds.north]).map(n => n.toFixed(3)).join(',') : null;
+  const tempKey = tempBounds ? snapBbox(padBbox([tempBounds.west, tempBounds.south, tempBounds.east, tempBounds.north])).map(n => n.toFixed(3)).join(',') : null;
   useEffect(() => {
     if (!tempKey) return; // the last field is kept; the layer being off hides it
     let cancelled = false;
@@ -980,14 +986,22 @@ export default function Dashboard() {
           fetch(`/api/temperature?bbox=${tempKey}`),
           fetch(`/api/temperature/stations?bbox=${tempKey}`).catch(() => null),
         ]);
-        if (!fieldRes.ok || cancelled) return;
+        if (cancelled) return;
+        if (!fieldRes.ok) {
+          const body = (await fieldRes.json().catch(() => ({}))) as { error?: string; retryAfterMs?: number };
+          const limited = fieldRes.status === 503 || /429/.test(body.error ?? '');
+          setWxTempNote(limited ? 'Provider busy · retrying' : `Field unavailable · ${body.error ?? fieldRes.status}`);
+          setTimeout(() => { if (!cancelled) setWxTempRetry(n => n + 1); }, Math.min(60000, Math.max(5000, body.retryAfterMs ?? 15000)));
+          return;
+        }
+        setWxTempNote(null);
         const grid = (await fieldRes.json()) as TempGrid;
         const stations = stationRes && stationRes.ok ? ((await stationRes.json()).stations as Station[] | undefined) ?? [] : [];
         if (!cancelled) { setWxTempGrid(grid); setWxStations(stations); }
-      } catch { /* the field keeps what it had */ }
-    }, 800);
+      } catch { if (!cancelled) setWxTempNote('Field unavailable · offline?'); }
+    }, 1500);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [tempKey]);
+  }, [tempKey, wxTempRetry]);
   const temperatureField = useMemo(
     () => (activeLayers.wx_temp && wxTempGrid ? isothermBands(blendWithStations(wxTempGrid, wxStations), tempUnit) : null),
     [activeLayers.wx_temp, wxTempGrid, wxStations, tempUnit],
@@ -2010,7 +2024,7 @@ export default function Dashboard() {
       {/* ── TEMPERATURE SCALE — while the isotherms are on ── */}
       {activeLayers.wx_temp && !isMobile && (
         <div className="absolute z-[200] bottom-[132px] pointer-events-none" style={{ left: '120px' }}>
-          <TemperatureLegend unit={tempUnit} onUnit={setTempUnit} time={wxTempGrid?.time ?? null} stations={wxStations.length} />
+          <TemperatureLegend unit={tempUnit} onUnit={setTempUnit} time={wxTempGrid?.time ?? null} stations={wxStations.length} note={wxTempNote} />
         </div>
       )}
 

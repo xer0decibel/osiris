@@ -1,43 +1,76 @@
 import { NextResponse } from 'next/server';
 import { httpJson } from '@/lib/httpJson';
-import { GRID_COLS, GRID_ROWS, GRID_MAX_POINTS, parseBbox, gridPoints, openMeteoUrl, readOpenMeteo, type TempGrid } from '@/lib/temperature-grid';
+import { GRID_COLS, GRID_ROWS, GRID_MAX_POINTS, parseBbox, snapBbox, bboxContains, gridPoints, openMeteoUrl, readOpenMeteo, type TempGrid, type Bbox } from '@/lib/temperature-grid';
 
 /**
  * OSIRIS — the current air-temperature field for a view. See
  * lib/temperature-grid for why it is built from points rather than tiles.
  *
- * GET /api/temperature?bbox=w,s,e,n[&cols=24&rows=16]
+ * GET /api/temperature?bbox=w,s,e,n[&cols=12&rows=8]
  *
- * Cached ten minutes per view rounded to a tenth of a degree: Open-Meteo
- * updates hourly, and a map nudged a few pixels is the same field.
+ * Open-Meteo's free tier is about 600 location-calls a minute, and it answers
+ * a 429 for a while once that is spent — which blanked the layer the first
+ * afternoon. So this route is careful with it: the view is snapped to a
+ * lattice, a fresh field that covers the request is served from cache without
+ * asking, no more than one request goes upstream every few seconds, and a
+ * 429 starts a cooldown during which the best cached field is served instead.
  */
 export const dynamic = 'force-dynamic';
 
-const TTL_MS = 10 * 60 * 1000;
+const TTL_MS = 15 * 60 * 1000;
+const MIN_GAP_MS = 4000;
+const COOLDOWN_MS = 90 * 1000;
 const cache = new Map<string, { at: number; grid: TempGrid }>();
+let lastUpstream = 0;
+let cooldownUntil = 0;
+
+/** The freshest cached field that covers the request, or failing that overlaps it most. */
+function bestCached(bbox: Bbox, nowMs: number): TempGrid | null {
+  let covering: { at: number; grid: TempGrid } | null = null;
+  let overlapping: { at: number; grid: TempGrid; share: number } | null = null;
+  for (const entry of cache.values()) {
+    if (nowMs - entry.at > TTL_MS) continue;
+    if (bboxContains(entry.grid.bbox, bbox)) { if (!covering || entry.at > covering.at) covering = entry; continue; }
+    const b = entry.grid.bbox;
+    const w = Math.max(0, Math.min(b[2], bbox[2]) - Math.max(b[0], bbox[0]));
+    const h = Math.max(0, Math.min(b[3], bbox[3]) - Math.max(b[1], bbox[1]));
+    const share = (w * h) / ((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]));
+    if (share > 0.5 && (!overlapping || share > overlapping.share)) overlapping = { ...entry, share };
+  }
+  return covering?.grid ?? overlapping?.grid ?? null;
+}
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const bbox = parseBbox(searchParams.get('bbox'));
-  if (!bbox) return NextResponse.json({ error: 'bbox=w,s,e,n required' }, { status: 400 });
-  const cols = Math.min(64, Math.max(2, Number(searchParams.get('cols')) || GRID_COLS));
-  const rows = Math.min(64, Math.max(2, Number(searchParams.get('rows')) || GRID_ROWS));
+  const asked = parseBbox(searchParams.get('bbox'));
+  if (!asked) return NextResponse.json({ error: 'bbox=w,s,e,n required' }, { status: 400 });
+  const bbox = snapBbox(asked);
+  const cols = Math.min(32, Math.max(2, Number(searchParams.get('cols')) || GRID_COLS));
+  const rows = Math.min(32, Math.max(2, Number(searchParams.get('rows')) || GRID_ROWS));
   if (cols * rows > GRID_MAX_POINTS) return NextResponse.json({ error: `at most ${GRID_MAX_POINTS} points` }, { status: 400 });
 
-  const key = `${bbox.map(n => n.toFixed(1)).join(',')}:${cols}x${rows}`;
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL_MS) return NextResponse.json(hit.grid, { headers: { 'Cache-Control': 'public, max-age=300' } });
+  const now = Date.now();
+  const headers = { 'Cache-Control': 'public, max-age=300' };
+  const served = bestCached(bbox, now);
+  if (served) return NextResponse.json({ ...served, cached: true }, { headers });
+
+  if (now < cooldownUntil || now - lastUpstream < MIN_GAP_MS) {
+    return NextResponse.json({ error: 'temperature provider is being rate-limited; try again shortly', retryAfterMs: Math.max(cooldownUntil - now, MIN_GAP_MS) }, { status: 503, headers: { 'Retry-After': '5' } });
+  }
 
   const points = gridPoints(bbox, cols, rows);
+  lastUpstream = now;
   try {
     const body = await httpJson<unknown>(openMeteoUrl(points), { timeoutMs: 20000, headers: { 'Accept-Encoding': 'gzip' } });
     const read = readOpenMeteo(body, points.length);
     if (!read) return NextResponse.json({ error: 'Open-Meteo answered with the wrong number of points' }, { status: 502 });
     const grid: TempGrid = { cols, rows, bbox, values: read.values, time: read.time };
-    cache.set(key, { at: Date.now(), grid });
+    cache.set(bbox.join(','), { at: Date.now(), grid });
     if (cache.size > 200) cache.delete(cache.keys().next().value as string);
-    return NextResponse.json(grid, { headers: { 'Cache-Control': 'public, max-age=300' } });
+    return NextResponse.json(grid, { headers });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'temperature fetch failed' }, { status: 502 });
+    const message = e instanceof Error ? e.message : 'temperature fetch failed';
+    if (/429/.test(message)) cooldownUntil = Date.now() + COOLDOWN_MS;
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }

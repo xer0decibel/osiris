@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { parseBbox, padBbox, gridPoints, openMeteoUrl, readOpenMeteo } from './temperature-grid';
+import { parseBbox, padBbox, gridPoints, openMeteoUrl, readOpenMeteo, snapBbox, bboxContains, GRID_COLS, GRID_ROWS } from './temperature-grid';
+
+describe('the request budget', () => {
+  it('keeps a grid under a hundred points', () => {
+    expect(GRID_COLS * GRID_ROWS).toBeLessThanOrEqual(100);
+  });
+
+  it('snaps a view outward to a lattice so pans share a field', () => {
+    expect(snapBbox([-122.52, 45.44, -122.16, 45.6])).toEqual([-122.75, 45.25, -122, 45.75]);
+    expect(snapBbox([-122.51, 45.41, -122.2, 45.62])).toEqual([-122.75, 45.25, -122, 45.75]); // a small pan, same field
+    expect(snapBbox([-130, 40, -110, 50])).toEqual([-130, 40, -110, 50]);                    // a wide view, whole degrees
+  });
+
+  it('knows when a cached field covers a request', () => {
+    expect(bboxContains([-123, 45, -122, 46], [-122.75, 45.25, -122, 45.75])).toBe(true);
+    expect(bboxContains([-123, 45, -122, 46], [-123.5, 45.25, -122, 45.75])).toBe(false);
+  });
+});
 
 describe('temperature grid', () => {
   it('parses a view and rejects nonsense', () => {
