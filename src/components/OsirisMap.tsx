@@ -2452,23 +2452,29 @@ function OsirisMap({
     setVis(['wx-station-dots', 'wx-station-label'], Boolean(activeLayers.wx_temp && temperatureStations));
     const on = Boolean(activeLayers.wx_temp && temperatureField);
     setVis(['wx-border-state', 'wx-border-country'], on);
-    const showing = wxFace.current, next = showing === 'a' ? 'b' : 'a';
-    if (!on) {
-      if (map.getLayer(`wx-isotherm-fill-${showing}`)) map.setPaintProperty(`wx-isotherm-fill-${showing}`, 'fill-opacity', 0);
-      return;
-    }
+    const faces = ['a', 'b'] as const;
+    const opacity = (face: 'a' | 'b', v: number) => { if (map.getLayer(`wx-isotherm-fill-${face}`)) map.setPaintProperty(`wx-isotherm-fill-${face}`, 'fill-opacity', v); };
+    if (!on) { faces.forEach(f => opacity(f, 0)); return; }
+    const next = wxFace.current === 'a' ? 'b' : 'a';
     setVis(['wx-isotherm-fill-a', 'wx-isotherm-fill-b'], true);
     setGeo(`wx-isotherms-${next}`, temperatureField!.features);
     wxFace.current = next;
     /* The dissolve waits for the new data to be tiled and drawn, or the
-       face would fade in empty and the bands would pop in afterwards. */
+       face would fade in empty and the bands would pop in afterwards. It
+       sets both faces, not just the pair it swapped, and it runs at the
+       latest when this effect is torn down: an earlier version waited on
+       the map going idle and could be cancelled before it ran, which left
+       a stale face showing at full opacity under the next one. */
+    let done = false;
     const dissolve = () => {
-      if (wxFace.current !== next || !map.getLayer(`wx-isotherm-fill-${next}`)) return;
-      map.setPaintProperty(`wx-isotherm-fill-${next}`, 'fill-opacity', 0.45);
-      map.setPaintProperty(`wx-isotherm-fill-${showing}`, 'fill-opacity', 0);
+      if (done) return;
+      done = true;
+      faces.forEach(f => opacity(f, f === wxFace.current ? 0.45 : 0));
     };
-    map.once('idle', dissolve);
-    return () => { map.off('idle', dissolve); };
+    const onSource = (e: { sourceId?: string; isSourceLoaded?: boolean }) => { if (e.sourceId === `wx-isotherms-${next}` && e.isSourceLoaded) dissolve(); };
+    map.on('sourcedata', onSource);
+    const fallback = window.setTimeout(dissolve, 1500);
+    return () => { map.off('sourcedata', onSource); window.clearTimeout(fallback); dissolve(); };
   }, [mapReady, temperatureField, temperatureStations, activeLayers.wx_temp, setGeo, setVis]);
 
   // Named fire incidents → GeoJSON
