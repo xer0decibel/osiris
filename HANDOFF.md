@@ -1,7 +1,8 @@
 # OSIRIS — handoff
 
 Read this before touching the map. Written across one very long session,
-2026-09-08/09, which took a cloned dashboard and added six layers to it.
+2026-09-08/09, which took a cloned dashboard, added six layers, made it work
+with no network, and started packaging it as a bootable drive.
 
 **What this is:** a fork-in-progress of
 [simplifaisoul/osiris](https://github.com/simplifaisoul/osiris) — an OSINT
@@ -66,8 +67,19 @@ Six layers added, all keyless, all toggleable, all off by default:
 | Named Fire Incidents | NIFC / WFIGS | 448 US wildfires, acres + containment |
 | Fire Perimeters | NIFC / WFIGS | 194 polygons, generalised to ~500m |
 
-Plus: a real FRP-weighted fire heatmap, draggable floating windows, an offline
-basemap, and the map now opens where you are.
+Plus: a real FRP-weighted fire heatmap, draggable floating windows, and the map
+now opens where you are rather than in central Bulgaria.
+
+**Offline and appliance work**, all of it aimed at the bootable-drive plan:
+
+| Thing | Where | Note |
+|---|---|---|
+| Offline basemap | `public/offline/`, `lib/basemap.ts` | 2.3MB Natural Earth; whole world, no network |
+| Basemap pin | `OSIRIS_BASEMAP=offline` | meta tag from the layout, read per request |
+| Library updater | `tools/update-kit.mjs` | verified, resumable, never deletes before it swaps |
+| Drive landing page | `usb/START-HERE.html` | one file, no build, works over `file://` |
+| Packaging list | `docs/USB-APPLIANCE.md` | measured sizes, three builds, the three usage modes |
+| Offline commands | `lib/commands.ts` | **built and tested, not wired — see open threads** |
 
 **Three decisions that look arbitrary and are not:**
 
@@ -116,6 +128,25 @@ The useful half of this document.
   `.env.example`, printing "SENSITIVE FILE COMMITTED". Nothing was wrong.
   Verify the alarm before repeating it.
 
+- **Silently emptied every place feature.** The basemap fetcher filtered
+  properties by exact key, and Natural Earth uses `NAME` on its country layers
+  but `name` on the "simple" ones. Result: the offline map shipped with **no city
+  labels at all**, and the offline gazetteer knew only countries. Neither failed
+  — they just had nothing to show, which is why it survived a round of "verified"
+  screenshots. Found weeks-of-staring later, by accident, while testing something
+  else. Property lookup is case-insensitive now. **If a filter can silently match
+  nothing, make it prove it matched something.**
+
+- **Averaged a polygon's closing vertex.** A GeoJSON ring repeats its first point
+  at the end; including it in a centroid drags the result toward that corner.
+  Caught by a unit test whose expected value I had worked out by hand — the test
+  was right and the code was wrong, which is the good way round.
+
+- **Nearly fixed a bug that did not exist.** The landing page *looked* clipped on
+  the right in a scaled screenshot. Measuring said `scrollWidth === clientWidth`
+  and zero overflowing elements. It was a screenshot artefact. Measure before
+  changing, including when the evidence is your own eyes.
+
 - **Chased a red herring for many turns.** `queryRenderedFeatures` returns 0 for
   `fires-dots` under globe projection even when the dots are plainly on screen
   and clicking them works. The click path was never broken. If a query API
@@ -124,6 +155,19 @@ The useful half of this document.
 ---
 
 ## Open threads
+
+- **`lib/commands.ts` is orphaned — start here.** The parser turns "fires in
+  oregon" into a layer toggle plus a camera move, resolves places from the
+  bundled gazetteer with no network, and has 17 tests. Nothing calls it. It needs
+  wiring into `SearchBar` (`components/SearchBar.tsx`, which today only geocodes
+  through Nominatim and so does nothing offline) and a `setActiveLayers` path
+  from `page.tsx`. Committed unused code rots; this is the first thing to finish.
+
+- **Two more pieces of the same idea were agreed and not built:** surfacing
+  Kiwix's own full-text search across the ZIMs, and a local language model on the
+  drive. The model must be **strictly grounded in the library** — retrieving and
+  quoting, never answering from its own weights. A 3B model inventing a drug
+  dosage on a survival drive is the one failure here that actually hurts someone.
 
 - **Nothing is pushed.** Needs a fork or a new repo (see the session notes) and
   a Personal Access Token — GitHub no longer takes passwords over HTTPS.
@@ -149,8 +193,13 @@ The useful half of this document.
 
 ## Current state (end of session 1, 2026-09-09)
 
-628 tests pass, typecheck clean, lint clean on every file added here. Working
-tree clean. `npm run dev` on :3000.
+**649 tests pass**, typecheck clean, lint clean on every file added here. Working
+tree clean, 16 commits on `feat/intel-layers`, nothing pushed. `npm run dev` on
+:3000.
+
+Before trusting anything here, run `node tools/fetch-offline-basemap.mjs` — the
+2.3MB of basemap and gazetteer data is gitignored, so a fresh checkout has the
+style but none of the data, and the offline map will be blank until you do.
 
 The layer architecture is the thing to preserve: a route under `src/app/api/`,
 a source and layers in `OsirisMap.tsx`, a fetch gated on the toggle in
