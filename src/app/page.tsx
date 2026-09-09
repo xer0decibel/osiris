@@ -28,6 +28,8 @@ import GlobalStatusBar from '@/components/GlobalStatusBar';
 import LiveAlerts from '@/components/LiveAlerts';
 import WorldRemote from '@/components/WorldRemote';
 import ArcGISPanel from '@/components/ArcGISPanel';
+import NearbyLayers from '@/components/NearbyLayers';
+import { NEARBY_QUERY, NEARBY_SETTLE_MS, bboxParam, pickNearby, type NearbyResult } from '@/lib/arcgis-nearby';
 import FloatingWindow, { windowButtonClass, windowIconClass } from '@/components/FloatingWindow';
 const OsirisMap = dynamic(() => import('@/components/OsirisMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
@@ -236,7 +238,55 @@ export default function Dashboard() {
   const [showRemote, setShowRemote] = useState(false);
   const [showArcGIS, setShowArcGIS] = useState(false);
   const [arcgisLayers, setArcgisLayers] = useState<Array<{ id: string; title: string; url: string; geojson: any; color: string; visible: boolean; opacity: number }>>([]);
+  /* Auto find: with it on, every place the map settles is searched for the
+     layers ArcGIS Online has there, and a small strip offers them one click
+     each. Remembered per browser, like the studio settings. */
+  const [arcgisAuto, setArcgisAuto] = useState<boolean>(() => {
+    try { return typeof window !== 'undefined' && window.localStorage.getItem('osiris:arcgis-auto') === '1'; } catch { return false; }
+  });
+  const [nearby, setNearby] = useState<NearbyResult[]>([]);
+  const [nearbyImporting, setNearbyImporting] = useState<string | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; bounds?: { west: number; south: number; east: number; north: number } } | null>(null);
+
+  useEffect(() => {
+    try { window.localStorage.setItem('osiris:arcgis-auto', arcgisAuto ? '1' : '0'); } catch { /* private mode */ }
+  }, [arcgisAuto]);
+
+  const nearbyBounds = arcgisAuto ? mapCenter?.bounds ?? null : null;
+  const nearbyKey = nearbyBounds ? bboxParam(nearbyBounds) : null;
+  useEffect(() => {
+    if (!nearbyKey) return;
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/arcgis?q=${encodeURIComponent(NEARBY_QUERY)}&bbox=${nearbyKey}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled) setNearby(pickNearby((data.results ?? []) as NearbyResult[], arcgisLayers.map(l => l.id)));
+      } catch { /* the strip keeps what it had */ }
+    }, NEARBY_SETTLE_MS);
+    return () => { cancelled = true; clearTimeout(t); };
+    // arcgisLayers is read for the filter, not watched: an import must not trigger a fresh search.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearbyKey]);
+
+  const importNearby = useCallback(async (r: NearbyResult) => {
+    if (!nearbyKey) return;
+    setNearbyImporting(r.id);
+    try {
+      const res = await fetch(`/api/arcgis?service=${encodeURIComponent(r.url)}&bbox=${nearbyKey}`);
+      if (!res.ok) return;
+      const geojson = await res.json();
+      const palette = ['#D4AF37', '#00E5FF', '#FF6B6B', '#00E676', '#FF9800', '#AB47BC'];
+      setArcgisLayers(prev => {
+        const color = palette.find(c => !prev.some(l => l.color === c)) ?? palette[prev.length % palette.length];
+        return [...prev.filter(l => l.id !== r.id), { id: r.id, title: r.title, url: r.url, geojson, color, visible: true, opacity: 0.8 }];
+      });
+      setNearby(n => n.filter(x => x.id !== r.id));
+    } finally {
+      setNearbyImporting(null);
+    }
+  }, [nearbyKey]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|'remote'|null>(null);
   const [mapProjection, setMapProjection] = useState<'globe'|'mercator'>('globe');
@@ -1641,6 +1691,8 @@ export default function Dashboard() {
                     onUpdateLayer={(id, updates) => setArcgisLayers(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l))}
                     importedLayers={arcgisLayers}
                     mapBounds={mapCenter?.bounds || null}
+                    autoFind={arcgisAuto}
+                    onAutoFind={setArcgisAuto}
                   />
                 </FloatingWindow>
               </motion.div>
@@ -1889,6 +1941,11 @@ export default function Dashboard() {
       )}
 
       {/* Scale bar is now integrated into the map controls section above */}
+
+      {/* ── AUTO FIND — layers ArcGIS Online has for this view ── */}
+      {arcgisAuto && !isMobile && (
+        <NearbyLayers results={nearby} importingId={nearbyImporting} onImport={importNearby} onClose={() => setArcgisAuto(false)} />
+      )}
 
       {/* ── Region Dossier ── */}
       {(regionDossier || dossierLoading) && (

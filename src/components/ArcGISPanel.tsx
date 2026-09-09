@@ -57,6 +57,9 @@ export interface ArcGISPanelProps {
   onUpdateLayer: (id: string, updates: Partial<{ color: string; visible: boolean; opacity: number }>) => void;
   importedLayers: ImportedLayer[];
   mapBounds?: { west: number; south: number; east: number; north: number } | null;
+  /** Auto find: search wherever the map settles and offer the results in a strip. */
+  autoFind?: boolean;
+  onAutoFind?: (on: boolean) => void;
 }
 
 /* Property lines lead: there is no national parcel layer anywhere, free or
@@ -103,6 +106,8 @@ export default function ArcGISPanel({
   onUpdateLayer,
   importedLayers,
   mapBounds,
+  autoFind = false,
+  onAutoFind,
 }: ArcGISPanelProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ArcGISResult[]>([]);
@@ -388,6 +393,23 @@ export default function ArcGISPanel({
             </AnimatePresence>
           </div>
         </div>
+      )}
+
+      {/* ── Auto find ─────────────────────────────────────────── */}
+      {onAutoFind && (
+        <button
+          onClick={() => onAutoFind(!autoFind)}
+          aria-pressed={autoFind}
+          className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg border text-left transition-colors shrink-0 ${
+            autoFind ? 'border-[#D4AF37]/50 bg-[#D4AF37]/10' : 'border-white/10 bg-black/40 hover:bg-white/5'
+          }`}
+        >
+          <span className="min-w-0">
+            <span className={`block text-[10px] font-mono font-bold tracking-widest uppercase ${autoFind ? 'text-[#D4AF37]' : 'text-white/70'}`}>Auto find</span>
+            <span className="block text-[9px] font-mono text-[var(--text-muted)] truncate">Offer the layers here as the map moves, without opening this window</span>
+          </span>
+          <span className={`text-[9px] font-mono tracking-widest shrink-0 ${autoFind ? 'text-[#D4AF37]' : 'text-white/40'}`}>{autoFind ? 'ON' : 'OFF'}</span>
+        </button>
       )}
 
       {/* ── Search Bar ────────────────────────────────────────── */}
