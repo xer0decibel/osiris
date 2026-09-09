@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { expandFires } from '@/lib/fires';
 import { writeHomeView } from '@/lib/homeView';
 import { localTimeAt } from '@/lib/local-time';
+import { zillowRentalsUrl } from '@/lib/listings';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, BarChart3, Newspaper, Search, X, Route, Radar, Plane, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, Bluetooth, Pentagon, Radio , PenLine } from 'lucide-react';
@@ -568,7 +569,7 @@ export default function Dashboard() {
     setDossierLoading(true); setRegionDossier(null);
     try {
       const res = await fetch(`/api/region-dossier?lat=${coords.lat}&lng=${coords.lng}`);
-      if (res.ok) setRegionDossier(await res.json());
+      if (res.ok) setRegionDossier({ ...(await res.json()), coords });
     } catch (e) { console.warn('[OSIRIS] Suppressed error:', e instanceof Error ? e.message : e); } finally { setDossierLoading(false); }
   }, []);
   // Entity click handler (hoisted from JSX to comply with Rules of Hooks - Fixes #113)
@@ -1987,6 +1988,21 @@ export default function Dashboard() {
                 )}
                 {regionDossier.head_of_state && (<div><div className="hud-label mb-0.5">HEAD OF STATE</div><div className="text-xs text-[var(--gold-primary)]">{regionDossier.head_of_state.name}</div><div className="text-[9px] text-[var(--text-muted)]">{regionDossier.head_of_state.position}</div></div>)}
                 {regionDossier.wikipedia && (<div><div className="hud-label mb-1">INTELLIGENCE BRIEF</div><div className="flex gap-3">{regionDossier.wikipedia.thumbnail && <img src={regionDossier.wikipedia.thumbnail} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}<p className="text-[9px] text-[var(--text-secondary)] leading-relaxed">{regionDossier.wikipedia.extract}</p></div></div>)}
+                {regionDossier.coords && (
+                  <div>
+                    <div className="hud-label mb-1">RENTALS NEARBY</div>
+                    {/* A link out, not a layer: no listings source is free, keyless and
+                        allowed — see lib/listings. Zillow opens with the map on this spot. */}
+                    <a
+                      href={zillowRentalsUrl(regionDossier.coords.lat, regionDossier.coords.lng)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
+                    >
+                      For rent on Zillow, around this spot <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </FloatingWindow>
