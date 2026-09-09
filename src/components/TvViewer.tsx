@@ -47,6 +47,7 @@ type PlayState = 'idle' | 'loading' | 'playing' | 'error';
  * the next channel cheap rather than to pretend every entry works.
  */
 export default function TvViewer({ country, onClose, onLocate }: TvViewerProps) {
+  const [pip, setPip] = useState(false);
   if (!country) return null;
   /* TvPanel is keyed by country so switching markers remounts it, rather than
      unwinding the previous country's channels, selection and filter by hand.
@@ -58,14 +59,19 @@ export default function TvViewer({ country, onClose, onLocate }: TvViewerProps) 
      its default corner every time they picked a different country. */
   return (
     <AnimatePresence>
-      <DraggablePanel className="fixed z-[498] top-14 left-2 right-2 md:top-20 md:right-6 md:left-auto md:w-[420px]">
-        <TvPanel key={country.code} country={country} onClose={onClose} onLocate={onLocate} />
+      {/* Hidden, not unmounted, while the stream floats in the browser's own
+          picture-in-picture window: the <video> has to stay alive for that. */}
+      <DraggablePanel
+        className="fixed z-[498] top-14 left-2 right-2 md:top-20 md:right-6 md:left-auto md:w-[420px]"
+        style={pip ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+      >
+        <TvPanel key={country.code} country={country} onClose={onClose} onLocate={onLocate} onPipChange={setPip} />
       </DraggablePanel>
     </AnimatePresence>
   );
 }
 
-function TvPanel({ country, onClose, onLocate }: TvViewerProps & { country: TvCountrySel }) {
+function TvPanel({ country, onClose, onLocate, onPipChange }: TvViewerProps & { country: TvCountrySel; onPipChange?: (on: boolean) => void }) {
   const [channels, setChannels] = useState<TvChannel[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState(false);
@@ -74,6 +80,24 @@ function TvPanel({ country, onClose, onLocate }: TvViewerProps & { country: TvCo
   const [query, setQuery] = useState('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  /* The browser's picture-in-picture: the listing window hides while the
+     stream floats, and comes back when that window closes. Unmounting — a
+     country switch remounts this panel, closing the viewer removes it — puts
+     the window back too, since the video it was hiding for is gone. */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const enter = () => onPipChange?.(true);
+    const leave = () => onPipChange?.(false);
+    video.addEventListener('enterpictureinpicture', enter);
+    video.addEventListener('leavepictureinpicture', leave);
+    return () => {
+      video.removeEventListener('enterpictureinpicture', enter);
+      video.removeEventListener('leavepictureinpicture', leave);
+      onPipChange?.(false);
+    };
+  }, [onPipChange]);
   const hlsRef = useRef<Hls | null>(null);
 
   const code = country.code;
