@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gfsCycles, gfsFilterUrl, toGlobalField, sampleGlobal, cropField, seriesFrom, fieldAt, GFS_MAX_COLS, GFS_MAX_ROWS, type GlobalField } from './gfs';
+import { gfsCycles, gfsFilterUrl, toGlobalField, sampleGlobal, cropField, seriesFrom, fieldAt, gfsRequestBbox, GLOBE_BBOX, GFS_MAX_COLS, GFS_MAX_ROWS, type GlobalField } from './gfs';
 import type { Grib2Field } from './grib2';
 
 /** A 1° globe whose value is latitude × 1000 + column, so any sample is checkable by eye and survives the crop's rounding. */
@@ -90,10 +90,20 @@ describe('the global field', () => {
     const crop = cropField(latitudeGlobe(), [-180, -85, 180, 85]);
     expect(crop.cols).toBeLessThanOrEqual(GFS_MAX_COLS + 1);
     expect(crop.rows).toBeLessThanOrEqual(GFS_MAX_ROWS + 1);
-    expect(crop.bbox).toEqual([-180, -87, 180, 87]); // every third cell, edges on multiples of three
-    expect(crop.cols).toBe(121);
-    expect(crop.rows).toBe(59);
-    expect(crop.values[0]).toBe(-86820); // lat -87, and -180 is column 180
+    expect(crop.bbox).toEqual([-180, -86, 180, 86]); // every second cell of a 1° globe, edges on multiples of two
+    expect(crop.cols).toBe(181);
+    expect(crop.rows).toBe(87);
+    expect(crop.values[0]).toBe(-85820); // lat -86, and -180 is column 180
+    // The real model is 0.5°: the same budget makes the globe a three-cell stride, 1.5°.
+    const half: GlobalField = { ...latitudeGlobe(), ni: 720, nj: 361, dLon: 0.5, dLat: -0.5, values: new Float32Array(720 * 361) };
+    const fine = cropField(half, GLOBE_BBOX);
+    expect((fine.bbox[2] - fine.bbox[0]) / (fine.cols - 1)).toBe(1.5);
+  });
+
+  it('asks for the whole globe once the view is wide, and twice the view before that', () => {
+    expect(gfsRequestBbox([-100, 10, 20, 60])).toEqual(GLOBE_BBOX);
+    expect(gfsRequestBbox([-130, 30, -90, 50])).toEqual([-150, 20, -70, 60]);
+    expect(gfsRequestBbox([-170, 70, -100, 84])).toEqual([-180, 63, -65, 85]);
   });
 
   it('samples the same cells for two views that overlap, so a pan does not shift the bands', () => {

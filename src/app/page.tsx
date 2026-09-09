@@ -35,7 +35,7 @@ import { isothermBands, formatTemp, type TempUnit } from '@/lib/isotherms';
 import { blendWithStations } from '@/lib/temperature-blend';
 import type { Station } from '@/lib/nws-stations';
 import { padBbox, snapBbox, bboxContains, type TempGrid } from '@/lib/temperature-grid';
-import { GFS_MIN_SPAN } from '@/lib/gfs';
+import { GFS_MIN_SPAN, gfsRequestBbox } from '@/lib/gfs';
 import { NEARBY_CATEGORIES, NEARBY_SETTLE_MS, bboxParam, pickNearby, type NearbyResult } from '@/lib/arcgis-nearby';
 import FloatingWindow, { windowButtonClass, windowIconClass } from '@/components/FloatingWindow';
 const OsirisMap = dynamic(() => import('@/components/OsirisMap'), { ssr: false });
@@ -1002,7 +1002,7 @@ export default function Dashboard() {
     const t = setTimeout(async () => {
       try {
         const [fieldRes, stationRes] = await Promise.all([
-          fetch(`${tempGlobal ? '/api/temperature/gfs' : '/api/temperature'}?bbox=${tempKey}`),
+          fetch(tempGlobal ? `/api/temperature/gfs?bbox=${snapBbox(gfsRequestBbox(view)).map(n => n.toFixed(3)).join(',')}` : `/api/temperature?bbox=${tempKey}`),
           tempGlobal ? Promise.resolve(null) : fetch(`/api/temperature/stations?bbox=${tempKey}`).catch(() => null),
         ]);
         if (cancelled) return;

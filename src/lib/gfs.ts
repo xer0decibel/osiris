@@ -24,9 +24,25 @@ export type GfsResolution = '1p00' | '0p50' | '0p25';
 export const GFS_RESOLUTION: GfsResolution = '0p50';
 /** A padded view wider than this, in degrees, takes the GFS field instead of Open-Meteo points. */
 export const GFS_MIN_SPAN = 20;
-/** The most cells a cropped field carries: 180×91 is the globe at 2°, and the client upsamples. */
-export const GFS_MAX_COLS = 180;
-export const GFS_MAX_ROWS = 91;
+/** The most cells a cropped field carries: 242×123 lets the whole globe come at 1.5° (a three-cell stride); the client upsamples. */
+export const GFS_MAX_COLS = 242;
+export const GFS_MAX_ROWS = 123;
+/** A padded view wider than this asks for the whole globe, so no edge of the field can ever be turned into view. */
+export const GFS_GLOBE_SPAN = 90;
+export const GLOBE_BBOX: Bbox = [-180, -85, 180, 85];
+
+/**
+ * What to ask the GFS route for, given the padded view. Wide views get the
+ * whole globe: on the globe projection the view's box is only the half in
+ * front, and a field cut to it shows its corner as soon as the globe turns.
+ * Narrower views get twice their width and height, so a pan has room
+ * before the field must be asked for again.
+ */
+export function gfsRequestBbox(padded: Bbox): Bbox {
+  const w = padded[2] - padded[0], h = padded[3] - padded[1];
+  if (Math.max(w, h) > GFS_GLOBE_SPAN) return GLOBE_BBOX;
+  return [Math.max(-180, padded[0] - w / 2), Math.max(-85, padded[1] - h / 2), Math.min(180, padded[2] + w / 2), Math.min(85, padded[3] + h / 2)];
+}
 /** GFS runs at 00, 06, 12 and 18Z; the f000 file lands on NOMADS about this long after. */
 export const GFS_LAG_MS = 3.5 * 3600_000;
 /** The forecast hours fetched per run: enough to bracket any moment until the next run is up, and a little past. */
