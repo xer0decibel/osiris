@@ -14,6 +14,8 @@ moment it finds a connection.
 |---|---|---|
 | Basemap (coastlines, borders, lakes, cities) | ✅ from disk | ✅ CARTO, far more detail |
 | Every intelligence layer — fires, flights, radio, TV, weather, maritime, quakes | ❌ empty | ✅ unchanged |
+| Search box — places | ✅ countries, US states and ~240 major cities, from the basemap's own files | ✅ Nominatim, down to street level |
+| Search box — commands ("fires in oregon", "hide cctv") | ✅ | ✅ |
 
 The two are independent. Choosing the offline basemap does not disable, throttle
 or alter a single data layer; they are separate live feeds that simply have

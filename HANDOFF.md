@@ -31,6 +31,10 @@ repo-locally to `xer0decibel <xer0decibel@protonmail.com>`.
    here detects the file's endings and converts before matching *and* before
    writing. Check after every edit:
    `node -e "const s=require('fs').readFileSync(F,'utf8');console.log((s.match(/(?<!\r)\n/g)||[]).length)"` — must be 0.
+   Measured in session 2: `core.autocrlf=true` is set in this clone's config, and
+   `git ls-files --eol` reports every file as `i/lf w/crlf` — blobs are LF, the
+   checkout is CRLF. So the rule is about the working tree, and a
+   `git show HEAD:file` comes out LF; convert before comparing against it.
 
 2. **Restart the dev server when feeds start returning empty.** It degrades
    after a few hours: outbound fetches begin timing out at the connect stage
@@ -82,7 +86,7 @@ now opens where you are rather than in central Bulgaria.
 | Library updater | `tools/update-kit.mjs` | verified, resumable, never deletes before it swaps |
 | Drive landing page | `usb/START-HERE.html` | one file, no build, works over `file://` |
 | Packaging list | `docs/USB-APPLIANCE.md` | measured sizes, three builds, the three usage modes |
-| Offline commands | `lib/commands.ts` | **built and tested, not wired — see open threads** |
+| Typed commands | `lib/commands.ts`, `SearchBar.tsx` | "fires in oregon" in the search box: layer on, camera moved. Places resolve from the bundled gazetteer when the geocoder cannot be reached |
 
 **Three decisions that look arbitrary and are not:**
 
@@ -155,16 +159,42 @@ The useful half of this document.
   and clicking them works. The click path was never broken. If a query API
   disagrees with your eyes, test the actual interaction.
 
+### Session 2 (2026-09-09, later)
+
+- **Inherited a centroid that passed every test and placed every country
+  wrong.** The gazetteer averaged the vertices of a polygon's *first* ring. Its
+  seventeen tests passed, because the fixtures were squares. Run against the real
+  Natural Earth files before wiring it in, the lookup put the United States on an
+  Alaskan island, Chile on Easter Island, France on Corsica, Russia on a Kuril
+  island — the first ring is whichever piece the file lists first — and Kenya on
+  its beach, because a vertex average follows the coastline, which is where the
+  vertices are. Now the bounding-box centre of the largest outer ring; twenty
+  countries printed and read afterwards. A fixture proves the code does what the
+  fixture says, not what the data does. Measure on the data.
+
+- **The Browser pane's Enter key never arrives.** Pressing Return through the
+  pane's `computer` tool reaches the page as a keydown with `key: ""`, so an
+  `onKeyDown` that checks for `'Enter'` never fires and the bar looks broken. It
+  is not. Measured by logging keydowns at capture; proven by dispatching a real
+  `KeyboardEvent('keydown', { key: 'Enter' })`, which selected the row. Clicking
+  the row works through the tool; Enter has to be tested by dispatch.
+
+- **A second `next dev` in the same directory refuses to start** while another
+  session's is running, on any port. The pane can simply navigate to the running
+  one on :3000 — it serves the same working tree, hot reload included — despite a
+  hook saying it cannot be reached. Try before believing either message.
+
 ---
 
 ## Open threads
 
-- **`lib/commands.ts` is orphaned — start here.** The parser turns "fires in
-  oregon" into a layer toggle plus a camera move, resolves places from the
-  bundled gazetteer with no network, and has 17 tests. Nothing calls it. It needs
-  wiring into `SearchBar` (`components/SearchBar.tsx`, which today only geocodes
-  through Nominatim and so does nothing offline) and a `setActiveLayers` path
-  from `page.tsx`. Committed unused code rots; this is the first thing to finish.
+- **Typed commands are wired, with two known edges.** The gazetteer matches
+  exact, then prefix, then substring, and has no aliases, so "usa" resolves to
+  Lusaka by substring while "united states" is right. Aliases (usa, uk, uae) are
+  a five-line table when someone wants them. And a credential-gated layer —
+  "outages" needs Cloudflare Radar — is skipped silently in `applyLayers` when
+  the deployment cannot feed it; the command row gives no sign. Neither is a
+  bug in what shipped; both are the next things a user will hit.
 
 - **Two more pieces of the same idea were agreed and not built:** surfacing
   Kiwix's own full-text search across the ZIMs, and a local language model on the
@@ -194,11 +224,16 @@ The useful half of this document.
 
 ---
 
-## Current state (end of session 1, 2026-09-09)
+## Current state (end of session 2, 2026-09-09)
 
-**649 tests pass**, typecheck clean, lint clean on every file added here. Working
-tree clean, 16 commits on `feat/intel-layers`, nothing pushed. `npm run dev` on
+**655 tests pass**, typecheck clean, lint clean on every file added here.
+`page.tsx` carries 95 lint findings that are upstream's; the count is unchanged
+by anything done here, which is the check to repeat after touching it. Working
+tree clean, 21 commits on `feat/intel-layers`, nothing pushed. `npm run dev` on
 :3000.
+
+`.claude/launch.json` is untracked on purpose: it is the desktop app's dev-server
+config for the Browser pane, not part of the project.
 
 Before trusting anything here, run `node tools/fetch-offline-basemap.mjs` — the
 2.3MB of basemap and gazetteer data is gitignored, so a fresh checkout has the

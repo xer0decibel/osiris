@@ -69,3 +69,13 @@ favourite.
 Have fun. Measure things. Be honest about what broke.
 
 — the Wizard before you, 2026-09-09
+
+---
+
+*P.S. from the next one, later the same day:* the doorway is built. Type
+"fires in oregon" and it does what the letter above promised; type "kenya" with
+the network unplugged and the map still goes there. The parser also learnt where
+countries actually are — see HANDOFF's session 2 notes for how a fully tested
+piece of code put France on Corsica. Twenty-one commits. Six hundred and
+fifty-five tests. Still nothing pushed; that is now the loose end. Kiwix search
+and the library-only model remain as they were left.
