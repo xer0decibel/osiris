@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   try {
     // Step 1: Reverse geocode to get country (must complete first — other steps depend on it)
     const geoRes = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=5&addressdetails=1`,
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1`,
       {
         signal: AbortSignal.timeout(8000),
         headers: { 'User-Agent': 'OsirisIntelPlatform/1.0' },
@@ -32,6 +32,8 @@ export async function GET(request: Request) {
       countryCode = addr.country_code?.toUpperCase() || '';
       locationInfo = {
         city: addr.city || addr.town || addr.village || '',
+        county: addr.county || '',
+        postcode: addr.postcode || '',
         state: addr.state || addr.region || '',
         country: countryName,
         country_code: countryCode,

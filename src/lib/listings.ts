@@ -1,17 +1,19 @@
 /**
- * OSIRIS — where to look for rentals near a point.
+ * OSIRIS — where to look for property near a point.
  *
- * There is no free, keyless, terms-compliant source of rental listings:
- * Zillow, Redfin, Realtor and Apartments.com publish none, Craigslist retired
+ * There is no free, keyless, terms-compliant source of listings: Zillow,
+ * Redfin, Realtor, Apartments.com and LoopNet publish none, Craigslist retired
  * its feeds, and the aggregators that do sell an API meter it to a few dozen
  * calls a month on the free tier. So the map does not draw listings; it hands
- * the reader to the listings site with the map already centred on the spot,
- * which is the one thing that is free, current and allowed.
+ * the reader to the listings site with the search already on the spot, which
+ * is the one thing that is free, current and allowed.
  *
  * Zillow's search page reads its state from a JSON query parameter with map
- * bounds and a for-rent filter. That contract is theirs to change; it is the
- * one their own map uses, but it cannot be checked from a shell, since Zillow
- * answers non-browser requests with a block page.
+ * bounds — confirmed working by the operator. Redfin and LoopNet have no
+ * public bounds link; their stable public addresses are by ZIP code, so those
+ * links need the dossier to know the ZIP, and are omitted when it does not.
+ * Neither site can be checked from a shell: both answer non-browser requests
+ * with a block page.
  */
 
 /** A box roughly `km` kilometres on each side of the point, in degrees. */
@@ -21,16 +23,50 @@ export function boxAround(lat: number, lng: number, km = 2): { west: number; sou
   return { west: lng - dLng, south: lat - dLat, east: lng + dLng, north: lat + dLat };
 }
 
-export function zillowRentalsUrl(lat: number, lng: number, km = 2): string {
+function zillowUrl(path: 'for_rent' | 'for_sale', lat: number, lng: number, km: number): string {
   const b = boxAround(lat, lng, km);
-  const state = {
+  const state: Record<string, unknown> = {
     mapBounds: { west: b.west, east: b.east, south: b.south, north: b.north },
     isMapVisible: true,
-    filterState: {
+  };
+  if (path === 'for_rent') {
+    state.filterState = {
       fr: { value: true },
       fsba: { value: false }, fsbo: { value: false }, nc: { value: false },
       cmsn: { value: false }, auc: { value: false }, fore: { value: false },
-    },
+    };
+  }
+  return `https://www.zillow.com/homes/${path}/?searchQueryState=${encodeURIComponent(JSON.stringify(state))}`;
+}
+
+export function zillowRentalsUrl(lat: number, lng: number, km = 2): string {
+  return zillowUrl('for_rent', lat, lng, km);
+}
+
+export function zillowSaleUrl(lat: number, lng: number, km = 2): string {
+  return zillowUrl('for_sale', lat, lng, km);
+}
+
+/** A US ZIP, five digits, as the sites' URL slugs want it; null otherwise. */
+export function zipSlug(postcode: string | null | undefined): string | null {
+  const m = (postcode || '').trim().match(/^(\d{5})(-\d{4})?$/);
+  return m ? m[1] : null;
+}
+
+export function redfinUrls(postcode: string | null | undefined): { rent: string; sale: string } | null {
+  const zip = zipSlug(postcode);
+  if (!zip) return null;
+  return {
+    sale: `https://www.redfin.com/zipcode/${zip}`,
+    rent: `https://www.redfin.com/zipcode/${zip}/apartments-for-rent`,
   };
-  return `https://www.zillow.com/homes/for_rent/?searchQueryState=${encodeURIComponent(JSON.stringify(state))}`;
+}
+
+export function loopnetUrls(postcode: string | null | undefined): { lease: string; sale: string } | null {
+  const zip = zipSlug(postcode);
+  if (!zip) return null;
+  return {
+    lease: `https://www.loopnet.com/search/commercial-real-estate/${zip}/for-lease/`,
+    sale: `https://www.loopnet.com/search/commercial-real-estate/${zip}/for-sale/`,
+  };
 }

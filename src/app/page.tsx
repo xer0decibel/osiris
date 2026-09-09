@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { expandFires } from '@/lib/fires';
 import { writeHomeView } from '@/lib/homeView';
 import { localTimeAt } from '@/lib/local-time';
-import { zillowRentalsUrl } from '@/lib/listings';
+import { zillowRentalsUrl, zillowSaleUrl, redfinUrls, loopnetUrls } from '@/lib/listings';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, BarChart3, Newspaper, Search, X, Route, Radar, Plane, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, Bluetooth, Pentagon, Radio , PenLine } from 'lucide-react';
@@ -1990,17 +1990,64 @@ export default function Dashboard() {
                 {regionDossier.wikipedia && (<div><div className="hud-label mb-1">INTELLIGENCE BRIEF</div><div className="flex gap-3">{regionDossier.wikipedia.thumbnail && <img src={regionDossier.wikipedia.thumbnail} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}<p className="text-[9px] text-[var(--text-secondary)] leading-relaxed">{regionDossier.wikipedia.extract}</p></div></div>)}
                 {regionDossier.coords && (
                   <div>
-                    <div className="hud-label mb-1">RENTALS NEARBY</div>
-                    {/* A link out, not a layer: no listings source is free, keyless and
-                        allowed — see lib/listings. Zillow opens with the map on this spot. */}
-                    <a
-                      href={zillowRentalsUrl(regionDossier.coords.lat, regionDossier.coords.lng)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
-                    >
-                      For rent on Zillow, around this spot <ExternalLink className="w-3 h-3" />
-                    </a>
+                    <div className="hud-label mb-1">PROPERTY NEARBY</div>
+                    {/* Links out, not a layer: no listings source is free, keyless and
+                        allowed — see lib/listings. Zillow opens on the spot by map bounds;
+                        Redfin and LoopNet only have ZIP pages, so they need the ZIP. */}
+                    <div className="flex flex-wrap gap-1.5">
+                      <a
+                        href={zillowRentalsUrl(regionDossier.coords.lat, regionDossier.coords.lng)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
+                      >
+                        Zillow · rent <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                      <a
+                        href={zillowSaleUrl(regionDossier.coords.lat, regionDossier.coords.lng)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
+                      >
+                        Zillow · sale <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                      {redfinUrls(regionDossier.location?.postcode) && (<>
+                      <a
+                        href={redfinUrls(regionDossier.location?.postcode)!.rent}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
+                      >
+                        Redfin · rent <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                      <a
+                        href={redfinUrls(regionDossier.location?.postcode)!.sale}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
+                      >
+                        Redfin · sale <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                      </>)}
+                      {loopnetUrls(regionDossier.location?.postcode) && (<>
+                      <a
+                        href={loopnetUrls(regionDossier.location?.postcode)!.lease}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
+                      >
+                        LoopNet · lease <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                      <a
+                        href={loopnetUrls(regionDossier.location?.postcode)!.sale}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border-primary)] text-[9px] font-mono tracking-wider text-[var(--gold-primary)] hover:bg-[var(--gold-primary)]/10 transition-colors"
+                      >
+                        LoopNet · sale <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                      </>)}
+                    </div>
                   </div>
                 )}
               </div>
