@@ -15,6 +15,7 @@ import LiveNewsPreviews, { type PreviewFeed } from '@/components/LiveNewsPreview
 import { attachTerrain, type TerrainStatus } from '@/lib/map-terrain';
 import { watchMapStartup, type MapStartupStatus } from '@/lib/map-startup';
 import { readHomeView, DEFAULT_VIEW } from '@/lib/homeView';
+import { resolveBasemapStyle, probeBasemapReachability } from '@/lib/basemap';
 import { applyMapProjection } from '@/lib/map-projection';
 
 /** The catalogue fields the satellite layer and its popup actually read. */
@@ -244,10 +245,16 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     
-    // Select basemap style
-    // Local style/TileJSON metadata, with tiles delivered directly by the CDN.
-    // This avoids a blocking upstream style fetch and a server hop per tile.
-    const styleUrl = '/dark-matter-style.json';
+    /* Basemap choice, made synchronously — see lib/basemap. The CARTO style
+       keeps its tiles on the CDN, which avoids a blocking style fetch and a
+       server hop per tile, but resolves to nothing at all without a network.
+       The offline style is served entirely from disk. Swapping after the fact
+       is not possible: setStyle would tear down all ~100 layers added below. */
+    const styleUrl = resolveBasemapStyle();
+    /* Records whether the CDN answered so the *next* start chooses correctly.
+       Deliberately not awaited: this load is already committed to a style, and
+       blocking on a probe would stall precisely the machine that cannot answer it. */
+    void probeBasemapReachability();
 
     const container = containerRef.current;
     maplibregl.setWorkerUrl(`/vendor/maplibre/${maplibregl.getVersion()}/maplibre-gl-worker.mjs`);

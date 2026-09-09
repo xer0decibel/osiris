@@ -57,3 +57,8 @@ scanner_backend_backup.js
 
 # Security - Prevent accidental manual leaks
 *Manual*.md
+
+# offline basemap assets — fetched by tools/fetch-offline-basemap.mjs,
+# not committed: ~2MB of regenerable public-domain data
+/public/offline/*.geojson
+/public/offline/glyphs/

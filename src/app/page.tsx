@@ -429,7 +429,12 @@ export default function Dashboard() {
     if (urlTimer.current) clearTimeout(urlTimer.current);
     urlTimer.current = setTimeout(() => {
       const active = Object.entries(activeLayers).filter(([,v]) => v).map(([k]) => k).join(',');
-      const url = `${window.location.pathname}?layers=${active}`;
+      /* Rebuilt from the existing query rather than replacing it, so params
+         this effect knows nothing about survive. It used to overwrite the whole
+         string, which silently ate ?basemap= before the map could read it. */
+      const params = new URLSearchParams(window.location.search);
+      params.set('layers', active);
+      const url = `${window.location.pathname}?${params.toString()}`;
       window.history.replaceState(null, '', url);
     }, 1500);
   }, [activeLayers]);

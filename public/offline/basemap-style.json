@@ -1,0 +1,227 @@
+{
+  "version": 8,
+  "name": "OSIRIS Offline",
+  "metadata": {
+    "osiris:note": "Renders with no network. Every source, glyph and colour below resolves to a file under /offline, fetched by tools/fetch-offline-basemap.mjs. Palette is matched to dark-matter-style.json so switching between them is not jarring.",
+    "osiris:data": "Natural Earth, public domain. 110m land/lakes/places, 50m country borders.",
+    "osiris:detail": "World to country scale. Street-level offline needs a vector tile archive — see docs/OFFLINE.md.",
+    "osiris:palette": "Land is deliberately well clear of the water: matching dark-matter exactly left the coastline invisible on a dark display."
+  },
+  "glyphs": "/offline/glyphs/{fontstack}/{range}.pbf",
+  "sources": {
+    "land": {
+      "type": "geojson",
+      "data": "/offline/land.geojson"
+    },
+    "countries": {
+      "type": "geojson",
+      "data": "/offline/countries.geojson"
+    },
+    "states": {
+      "type": "geojson",
+      "data": "/offline/states.geojson"
+    },
+    "lakes": {
+      "type": "geojson",
+      "data": "/offline/lakes.geojson"
+    },
+    "places": {
+      "type": "geojson",
+      "data": "/offline/places.geojson"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#070a0f"
+      }
+    },
+    {
+      "id": "land",
+      "type": "fill",
+      "source": "land",
+      "paint": {
+        "fill-color": "#191d21"
+      }
+    },
+    {
+      "id": "country-fill",
+      "type": "fill",
+      "source": "countries",
+      "paint": {
+        "fill-color": "#1c2126",
+        "fill-opacity": 0.6
+      }
+    },
+    {
+      "id": "lakes",
+      "type": "fill",
+      "source": "lakes",
+      "paint": {
+        "fill-color": "#070a0f"
+      }
+    },
+    {
+      "id": "state-lines",
+      "type": "line",
+      "source": "states",
+      "minzoom": 3,
+      "paint": {
+        "line-color": "#252d34",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          3,
+          0.3,
+          8,
+          0.8
+        ],
+        "line-dasharray": [
+          3,
+          2
+        ]
+      }
+    },
+    {
+      "id": "country-lines",
+      "type": "line",
+      "source": "countries",
+      "paint": {
+        "line-color": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          2,
+          "#3a464f",
+          6,
+          "#485762"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          1,
+          0.4,
+          4,
+          0.7,
+          8,
+          1.2
+        ]
+      }
+    },
+    {
+      "id": "country-labels",
+      "type": "symbol",
+      "source": "countries",
+      "minzoom": 2,
+      "maxzoom": 8,
+      "layout": {
+        "text-field": [
+          "get",
+          "NAME"
+        ],
+        "text-font": [
+          "Open Sans Bold"
+        ],
+        "text-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          2,
+          9,
+          5,
+          12
+        ],
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.12,
+        "text-max-width": 8,
+        "text-padding": 4
+      },
+      "paint": {
+        "text-color": "rgba(155, 181, 204, 0.85)",
+        "text-halo-color": "rgba(8, 10, 12, 0.9)",
+        "text-halo-width": 1.4
+      }
+    },
+    {
+      "id": "place-labels",
+      "type": "symbol",
+      "source": "places",
+      "minzoom": 3,
+      "layout": {
+        "text-field": [
+          "get",
+          "NAME"
+        ],
+        "text-font": [
+          "Open Sans Regular"
+        ],
+        "text-size": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          3,
+          9,
+          8,
+          12
+        ],
+        "text-anchor": "top",
+        "text-offset": [
+          0,
+          0.4
+        ],
+        "text-padding": 6
+      },
+      "paint": {
+        "text-color": "rgba(182, 180, 180, 1)",
+        "text-halo-color": "rgba(53, 52, 52, 0.95)",
+        "text-halo-width": 1.2
+      }
+    },
+    {
+      "id": "place-dots",
+      "type": "circle",
+      "source": "places",
+      "minzoom": 3,
+      "paint": {
+        "circle-radius": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          3,
+          1.2,
+          8,
+          2.4
+        ],
+        "circle-color": "rgba(140, 160, 175, 0.7)"
+      }
+    }
+  ]
+}
