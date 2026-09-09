@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gfsCycles, gfsFilterUrl, toGlobalField, sampleGlobal, cropField, GFS_MAX_COLS, GFS_MAX_ROWS, type GlobalField } from './gfs';
+import { gfsCycles, gfsFilterUrl, toGlobalField, sampleGlobal, cropField, seriesFrom, fieldAt, GFS_MAX_COLS, GFS_MAX_ROWS, type GlobalField } from './gfs';
 import type { Grib2Field } from './grib2';
 
 /** A 1° globe whose value is latitude × 1000 + column, so any sample is checkable by eye and survives the crop's rounding. */
@@ -31,6 +31,7 @@ describe('GFS cycles', () => {
     expect(u).toContain('file=gfs.t12z.pgrb2full.0p50.f000');
     expect(u).toContain('var_TMP=on&lev_2_m_above_ground=on');
     expect(gfsFilterUrl({ date: '20260909', hour: '00', iso: '' }, '1p00')).toContain('file=gfs.t00z.pgrb2.1p00.f000');
+    expect(gfsFilterUrl({ date: '20260909', hour: '12', iso: '' }, '0p50', 9)).toContain('file=gfs.t12z.pgrb2full.0p50.f009');
   });
 });
 
@@ -47,6 +48,22 @@ describe('the global field', () => {
     expect(g.time).toBe('2026-09-09T15:00:00Z');
     expect(() => toGlobalField({ ...field, parameter: 1 }, '1p00')).toThrow(/expected temperature/);
     expect(() => toGlobalField({ ...field, levelValue: 10 }, '1p00')).toThrow(/2 m/);
+  });
+
+  it('interpolates between the forecast hours that bracket a moment', () => {
+    const frame = (hours: number, v: number): GlobalField => ({
+      ni: 2, nj: 1, lat1: 0, lon1: 0, dLon: 180, dLat: -1, values: new Float32Array([v, v * 2]),
+      run: '2026-09-09T12:00:00Z', time: new Date(Date.UTC(2026, 8, 9, 12 + hours)).toISOString().replace('.000Z', 'Z'), resolution: '1p00',
+    });
+    const series = seriesFrom([frame(6, 30), frame(0, 10), frame(3, 20)]);
+    expect(series.frames.map(f => f.time.slice(11, 13))).toEqual(['12', '15', '18']);
+    const at = (h: number, m = 0) => fieldAt(series, Date.UTC(2026, 8, 9, 12 + h, m));
+    expect(Array.from(at(0).values)).toEqual([10, 20]);
+    expect(Array.from(at(1, 30).values)).toEqual([15, 30]);          // halfway from f000 to f003
+    expect(Array.from(at(4).values).map(v => Math.round(v * 100) / 100)).toEqual([23.33, 46.67]);
+    expect(Array.from(at(9).values)).toEqual([30, 60]);              // past the last frame: the last frame
+    expect(at(1, 30).time).toBe('2026-09-09T13:30:00Z');
+    expect(() => seriesFrom([frame(0, 1), { ...frame(3, 1), ni: 3 }])).toThrow(/different grids/);
   });
 
   it('samples the nearest cell, wrapping longitude and clamping latitude', () => {

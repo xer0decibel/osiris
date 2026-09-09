@@ -9,9 +9,13 @@
  * globe at half a degree in one 160 KB request. That is the globe's source:
  * one download per model run, decoded once, cropped for each view.
  *
- * What it is not: current. The analysis is the model's state at the run
- * hour, published about three and a half hours later, so the field is
- * typically four to nine hours old. The legend says which run.
+ * A run's analysis is the model's state at the run hour, published about
+ * three and a half hours later, so on its own it is four to nine hours
+ * old — and six hours from the Open-Meteo field the map switches to when
+ * zoomed in, which made the switch a jump. So the run's forecast hours are
+ * fetched too (every three hours out to twelve, five small files) and the
+ * field is interpolated between the two that bracket the present. The
+ * globe is then "now" as well, and the two sources agree to a degree or so.
  */
 import type { Grib2Field } from './grib2';
 import { GRID_MAX_POINTS, type Bbox, type TempGrid } from './temperature-grid';
@@ -25,6 +29,8 @@ export const GFS_MAX_COLS = 180;
 export const GFS_MAX_ROWS = 91;
 /** GFS runs at 00, 06, 12 and 18Z; the f000 file lands on NOMADS about this long after. */
 export const GFS_LAG_MS = 3.5 * 3600_000;
+/** The forecast hours fetched per run: enough to bracket any moment until the next run is up, and a little past. */
+export const GFS_HOURS = [0, 3, 6, 9, 12];
 
 export interface GfsCycle {
   /** YYYYMMDD, UTC. */
@@ -47,9 +53,10 @@ export function gfsCycles(nowMs: number, count = 4): GfsCycle[] {
   return out;
 }
 
-/** NOMADS' filter: one variable at one level from one file, as GRIB2. */
-export function gfsFilterUrl(cycle: GfsCycle, resolution: GfsResolution = GFS_RESOLUTION): string {
-  const file = resolution === '0p50' ? `gfs.t${cycle.hour}z.pgrb2full.0p50.f000` : `gfs.t${cycle.hour}z.pgrb2.${resolution}.f000`;
+/** NOMADS' filter: one variable at one level from one forecast-hour file, as GRIB2. */
+export function gfsFilterUrl(cycle: GfsCycle, resolution: GfsResolution = GFS_RESOLUTION, hour = 0): string {
+  const f = `f${String(hour).padStart(3, '0')}`;
+  const file = resolution === '0p50' ? `gfs.t${cycle.hour}z.pgrb2full.0p50.${f}` : `gfs.t${cycle.hour}z.pgrb2.${resolution}.${f}`;
   return `https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_${resolution}.pl`
     + `?dir=%2Fgfs.${cycle.date}%2F${cycle.hour}%2Fatmos&file=${file}&var_TMP=on&lev_2_m_above_ground=on`;
 }
@@ -78,6 +85,43 @@ export function toGlobalField(field: Grib2Field, resolution: GfsResolution): Glo
   for (let i = 0; i < values.length; i++) values[i] = field.values[i] - 273.15;
   const time = new Date(new Date(field.referenceTime).getTime() + field.forecastHours * 3600_000).toISOString().replace('.000Z', 'Z');
   return { ...field.grid, values, run: field.referenceTime, time, resolution };
+}
+
+/** One run's forecast hours, on one grid. */
+export interface GlobalSeries {
+  run: string;
+  resolution: GfsResolution;
+  frames: GlobalField[];
+}
+
+/** The frames as a series, in hour order, refusing a frame on a different grid. */
+export function seriesFrom(frames: GlobalField[]): GlobalSeries {
+  if (!frames.length) throw new Error('GFS: no frames');
+  const [first] = frames;
+  for (const f of frames) {
+    if (f.run !== first.run) throw new Error('GFS: frames from different runs');
+    if (f.ni !== first.ni || f.nj !== first.nj || f.dLon !== first.dLon || f.dLat !== first.dLat) throw new Error('GFS: frames on different grids');
+  }
+  return { run: first.run, resolution: first.resolution, frames: [...frames].sort((a, b) => a.time.localeCompare(b.time)) };
+}
+
+/**
+ * The field at a moment: linear between the two frames that bracket it,
+ * the nearest frame beyond the ends. `time` is the moment, to the minute.
+ */
+export function fieldAt(series: GlobalSeries, atMs: number): GlobalField {
+  const { frames } = series;
+  const times = frames.map(f => new Date(f.time).getTime());
+  const time = new Date(Math.floor(atMs / 60_000) * 60_000).toISOString().replace('.000Z', 'Z');
+  if (atMs <= times[0]) return { ...frames[0], time };
+  if (atMs >= times[times.length - 1]) return { ...frames[frames.length - 1], time };
+  let i = 0;
+  while (times[i + 1] < atMs) i++;
+  const a = frames[i], b = frames[i + 1];
+  const w = (atMs - times[i]) / (times[i + 1] - times[i]);
+  const values = new Float32Array(a.values.length);
+  for (let k = 0; k < values.length; k++) values[k] = a.values[k] + (b.values[k] - a.values[k]) * w;
+  return { ...a, values, time };
 }
 
 /** The native cell nearest a point; longitudes wrap, latitudes clamp. */

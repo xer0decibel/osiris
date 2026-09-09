@@ -34,7 +34,7 @@ export default function TemperatureLegend({
   const other: TempUnit = unit === 'C' ? 'F' : 'C';
   const when = time ? `${time.slice(11, 16)}Z` : '';
   const status = note ?? (source === 'gfs'
-    ? `Global model${run ? ` · ${run.slice(11, 13)}Z run` : ''}`
+    ? `Global model${run ? ` · ${run.slice(11, 13)}Z run, to now` : ''}`
     : stations > 0 ? `Model + ${stations} NWS station${stations === 1 ? '' : 's'}` : 'Model only · isotherms every 2°C');
 
   return (
