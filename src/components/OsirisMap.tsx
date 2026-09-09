@@ -109,7 +109,24 @@ function computeSolarTerminator(): [number, number][] {
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 
-function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
+/* Icons drawn onto the map for cameras and fire detections. The paths are
+   lucide's `cctv` and `flame` on their 24-unit grid, rasterised by createGlyph
+   inside the component; the flame is filled, the camera stroked. */
+interface MapGlyph { paths: string[]; fill?: boolean }
+const CCTV_GLYPH: MapGlyph = { paths: [
+  'M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97',
+  'M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z',
+  'M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15',
+  'M2 21v-4',
+  'M7 9h.01',
+] };
+const FLAME_GLYPH: MapGlyph = { paths: ['M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4'], fill: true };
+/** Logical size of a glyph at icon-size 1, and the pixel ratio it is drawn at. */
+const GLYPH_PX = 32;
+const GLYPH_RATIO = 2;
+
+function OsirisMap({
+ data, activeLayers, weatherTiles, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -191,6 +208,37 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
     ctx.arc(size/2, size/2, size/2 - 1, 0, Math.PI * 2);
     ctx.fill();
     map.addImage(id, { width: size, height: size, data: new Uint8Array(ctx.getImageData(0, 0, size, size).data) });
+  }, []);
+
+  /**
+   * Rasterise a glyph from lucide's 24-unit grid as a map image, drawn twice:
+   * a dark outline first, then the colour on top, so it reads over any basemap
+   * the way the black-ringed dots did. Calling it again with another colour
+   * redraws the image in place, which is how the palette recolours cameras.
+   */
+  const createGlyph = useCallback((map: maplibregl.Map, id: string, glyph: MapGlyph, color: string) => {
+    const size = GLYPH_PX * GLYPH_RATIO;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    // Two units of margin, so the outline is not clipped at the grid's edge.
+    ctx.scale(size / 28, size / 28);
+    ctx.translate(2, 2);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const shapes = glyph.paths.map(d => new Path2D(d));
+    ctx.strokeStyle = '#000000'; ctx.lineWidth = glyph.fill ? 3.5 : 5; ctx.globalAlpha = 0.85;
+    for (const shape of shapes) ctx.stroke(shape);
+    ctx.globalAlpha = 1;
+    if (glyph.fill) {
+      ctx.fillStyle = color;
+      for (const shape of shapes) ctx.fill(shape);
+    } else {
+      ctx.strokeStyle = color; ctx.lineWidth = 2.2;
+      for (const shape of shapes) ctx.stroke(shape);
+    }
+    const image = { width: size, height: size, data: new Uint8Array(ctx.getImageData(0, 0, size, size).data) };
+    if (map.hasImage(id)) map.updateImage(id, image);
+    else map.addImage(id, image, { pixelRatio: GLYPH_RATIO });
   }, []);
 
   useEffect(() => {
@@ -334,6 +382,11 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
       createDot(map, 'dot-green', '#26A69A', 10);
       createDot(map, 'dot-fire', '#E65100', 10);
       createDot(map, 'dot-cctv', cameraColor, 10);
+      createGlyph(map, 'glyph-cctv', CCTV_GLYPH, cameraColor);
+      // Three flames rather than a colour ramp: an image cannot interpolate.
+      createGlyph(map, 'glyph-flame-low', FLAME_GLYPH, '#FFC107');
+      createGlyph(map, 'glyph-flame-mid', FLAME_GLYPH, '#FF6D00');
+      createGlyph(map, 'glyph-flame-high', FLAME_GLYPH, '#D32F2F');
 
       const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'malware-new', 'network-mesh', 'cyber-arcs', 'cyber-heads', 'cyber-impacts', 'gdelt-events', 'cf-outages', 'cf-attacks', 'radio', 'tv', 'fire-incidents', 'fire-perimeters'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
@@ -449,11 +502,13 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
 
       /* Individual detections take over where the density surface fades out.
          This is also the click target: a heatmap has no features to query. */
-      map.addLayer({ id: 'fires-dots', type: 'circle', source: 'fires', minzoom: 7, paint: {
-        'circle-radius': ['interpolate',['linear'],['zoom'], 7,2, 10,4, 14,7],
-        'circle-color': ['interpolate',['linear'],['get','frp'], 0,'#FFC107', 15,'#FF6D00', 80,'#D32F2F'],
-        'circle-opacity': ['interpolate',['linear'],['zoom'], 7,0, 9,0.85],
-        'circle-stroke-width': 0,
+      map.addLayer({ id: 'fires-dots', type: 'symbol', source: 'fires', minzoom: 7, layout: {
+        'icon-image': ['step', ['coalesce', ['get','frp'], 0], 'glyph-flame-low', 15, 'glyph-flame-mid', 80, 'glyph-flame-high'],
+        'icon-size': ['interpolate',['linear'],['zoom'], 7,0.3, 10,0.5, 14,0.85],
+        // Every detection is drawn, as every dot was: the density is the reading.
+        'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
+      }, paint: {
+        'icon-opacity': ['interpolate',['linear'],['zoom'], 7,0, 9,0.85],
       }});
 
       // CCTV — outer glow ring (black/white depending on theme)
@@ -461,12 +516,12 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
         'circle-radius': ['interpolate',['linear'],['zoom'], 1,5, 5,8, 10,14, 14,20],
         'circle-color': '#000000', 'circle-opacity': 0.35, 'circle-blur': 1,
       }});
-      // CCTV — main dot
-      map.addLayer({ id: 'cctv-dots', type: 'circle', source: 'cctv', paint: {
-        'circle-radius': ['interpolate',['linear'],['zoom'], 1,3, 5,5, 10,8, 14,12],
-        'circle-color': cameraColor, 'circle-opacity': 0.9,
-        'circle-stroke-width': 2.5, 'circle-stroke-color': '#000000', 'circle-stroke-opacity': 0.9,
-      }});
+      // CCTV — camera glyph, small when zoomed out, redrawn when the palette changes
+      map.addLayer({ id: 'cctv-dots', type: 'symbol', source: 'cctv', layout: {
+        'icon-image': 'glyph-cctv',
+        'icon-size': ['interpolate',['linear'],['zoom'], 1,0.25, 5,0.4, 10,0.7, 14,1],
+        'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
+      }, paint: { 'icon-opacity': 0.95 }});
       // CCTV — labels at zoom 10+
       map.addLayer({ id: 'cctv-label', type: 'symbol', source: 'cctv', minzoom: 10, layout: {
         'text-field': ['get','name'], 'text-size': 9, 'text-font': ['Open Sans Regular'],
@@ -1927,9 +1982,9 @@ function OsirisMap({ data, activeLayers, weatherTiles, onEntityClick, onMouseCoo
     useEffect(() => {
       if (!mapReady || !mapRef.current) return;
       const map = mapRef.current;
-      if (map.getLayer('cctv-dots')) map.setPaintProperty('cctv-dots', 'circle-color', palette.cctv);
+      if (map.getLayer('cctv-dots')) createGlyph(map, 'glyph-cctv', CCTV_GLYPH, palette.cctv);
       if (map.getLayer('cctv-label')) map.setPaintProperty('cctv-label', 'text-color', palette.cctv);
-    }, [mapReady, palette.cctv]);
+    }, [mapReady, palette.cctv, createGlyph]);
 
   // ── DECOUPLED LAYER RENDERERS (Performance Optimized) ──
 
