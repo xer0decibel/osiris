@@ -243,6 +243,16 @@ The useful half of this document.
   when a layer can fail, the failure must be visible on the map, and an error
   body must reach the code that decides what to do about it.
 
+- **A field on the globe is a picture, not polygons.** The temperature layer
+  spent most of a day as d3-contour bands: nested regions first, then true
+  bands cut from one another with a containment tree, then a fix for rings
+  touching at a vertex, then a fix for an inverted area sign. Each fix was
+  right and each screenshot showed the next stray triangle, because rings
+  from adjacent thresholds share the field's edge and MapLibre's globe
+  re-tessellates every polygon. Painting the field — sample, quantise, colour,
+  one image source, one opacity — took an hour, runs twenty times faster, and
+  cannot clip. When a layer is a continuous field, reach for a raster first.
+
 ---
 
 ## Open threads
