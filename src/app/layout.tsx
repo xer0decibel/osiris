@@ -182,6 +182,14 @@ export default function RootLayout({
   return (
     <html lang="en" dir="ltr">
       <head>
+        {/* Basemap pin for appliance builds. Read from the environment on each
+            request rather than baked in with NEXT_PUBLIC_, so one image can be
+            flipped between offline and online without rebuilding, and rendered
+            into the document rather than fetched because the map has to choose
+            its style synchronously at construction. See lib/basemap. */}
+        {process.env.OSIRIS_BASEMAP ? (
+          <meta name="osiris:basemap" content={process.env.OSIRIS_BASEMAP} />
+        ) : null}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="icon" href="/favicon.ico" sizes="any" />

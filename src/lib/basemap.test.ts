@@ -46,6 +46,29 @@ describe('chooseBasemap', () => {
     expect(chooseBasemap({ now: NOW })).toBe('online');
   });
 
+  it('honours a deployment pin over the automatic checks', () => {
+    // An appliance built offline must not go looking for CARTO merely because
+    // the machine it was plugged into happens to have a connection.
+    expect(chooseBasemap({ online: true, pin: 'offline', now: NOW })).toBe('offline');
+    expect(chooseBasemap({ online: true, pin: 'offline', unreachableAt: null, now: NOW })).toBe('offline');
+  });
+
+  it('lets a human override the deployment pin', () => {
+    // The pin is the image's default, not a lock: ?basemap=online still wins.
+    expect(chooseBasemap({ online: true, pin: 'offline', override: 'online', now: NOW })).toBe('online');
+    expect(chooseBasemap({ online: false, pin: 'online', override: 'offline', now: NOW })).toBe('offline');
+  });
+
+  it('ignores a pin it does not recognise rather than guessing', () => {
+    expect(chooseBasemap({ online: true, pin: 'OFFLINE_PLEASE', now: NOW })).toBe('online');
+    expect(chooseBasemap({ online: false, pin: '', now: NOW })).toBe('offline');
+  });
+
+  it('falls through to the automatic checks when unpinned', () => {
+    expect(chooseBasemap({ online: false, pin: null, now: NOW })).toBe('offline');
+    expect(chooseBasemap({ online: true, pin: null, now: NOW })).toBe('online');
+  });
+
   it('maps each choice to a style that is actually served', () => {
     expect(styleUrlFor('online')).toBe(ONLINE_STYLE);
     expect(styleUrlFor('offline')).toBe(OFFLINE_STYLE);

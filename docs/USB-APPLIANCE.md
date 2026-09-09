@@ -123,9 +123,10 @@ drive. The 128 GB build is the better product.
 
 Roughly in order of how much thinking each needs:
 
-1. **Pin the basemap to offline in the image.** One line —
-   `localStorage.setItem('osiris:basemap','offline')` — or ship a build with the
-   override baked in. Otherwise the appliance probes CARTO on every cold boot.
+1. ~~Pin the basemap to offline in the image.~~ **Done.** Set
+   `OSIRIS_BASEMAP=offline` in the image's environment. Read on every request, so
+   the same image flips without rebuilding; a human can still override per-tab
+   with `?basemap=online`.
 2. **A landing page.** Booting to a browser with two bookmarks is not a product.
    One page: dashboard, library, status, and an honest "no connection" state.
 3. **Connectivity awareness in the UI.** Right now offline layers just sit
@@ -138,6 +139,87 @@ Roughly in order of how much thinking each needs:
    drive someone assembled by hand once.
 
 ---
+
+## Three ways to use one drive
+
+The drive should not only be bootable. Most of the time the machine in front of
+you is already running, and asking someone to reboot a working computer to read
+a first-aid page is a bad trade.
+
+### Mode 1 — boot it
+The full appliance. For a machine that is off, that is not yours, or that you do
+not trust. Everything below is available.
+
+### Mode 2 — plug into a running computer
+No install, no reboot, no admin rights.
+
+- **Kiwix** ships portable builds for Windows, macOS and Linux. Run the binary
+  straight off the drive; point it at the ZIMs on the same drive.
+- **OSIRIS** runs the same way *if a Node runtime is carried on the drive*:
+  `node .next/standalone/server.js`, then open localhost:3000. The build is 41MB
+  and the runtime ~50MB, so all three platforms fit in about 150MB. No install,
+  nothing written to the host.
+
+### Mode 3 — plug into a phone
+This is the one with real limits, and they are worth knowing before you design
+around it.
+
+**A USB flash drive has no processor.** It cannot serve anything. It presents
+files, and the host does the rest. So on a phone:
+
+- **PDFs and single self-contained HTML files** open fine — Files on iOS, any
+  file manager on Android. This is why the field manuals and Hesperian books
+  earn their place: they work everywhere, with nothing installed.
+- **ZIM files need a reader.** The Kiwix apps for Android and iOS can open a ZIM
+  from external storage, so the library works — but only if that app is already
+  installed. Install it *before* you need it.
+- **OSIRIS cannot run.** No Node, no server. A phone can only read files.
+
+So the phone mode is the reference library, not the dashboard. Plan the content
+accordingly: anything that must be readable on an unprepared phone should exist
+as a PDF, not only inside a ZIM.
+
+### What USB-C actually buys you
+
+Nothing technical — it is a connector. What it buys is *reach*: modern phones,
+tablets and laptops with no adapter. Get a **dual-connector drive (USB-C on one
+end, USB-A on the other)**, because the machine you need in an emergency is as
+likely to be a decade-old desktop as a new phone.
+
+Do care about **USB 3.2 and a drive with real sustained write speed**. Writing
+70GB to cheap flash is an afternoon.
+
+### The partitioning that makes all three work
+
+This is the part with a hard constraint.
+
+**Use Ventoy.** Writing an ISO to a stick with `dd` typically leaves it
+unreadable as ordinary storage on Windows — which kills modes 2 and 3. Ventoy
+was built for exactly this: it creates a large data partition you can both drop
+bootable ISOs into *and* use as a normal drive.
+
+**Format the data partition exFAT, not FAT32.** FAT32 has a **4GB maximum file
+size**, and the Wikipedia ZIMs are 12–119GB. FAT32 cannot hold a single one of
+them. exFAT is readable by Windows, macOS, Linux, Android and iOS.
+
+Suggested layout:
+
+```
+  Ventoy data partition (exFAT)
+    /ISO/            live image, for mode 1
+    /START-HERE.html an index that works by double-click, no server
+    /docs/           PDFs — field manuals, Hesperian
+    /zim/            Kiwix library
+    /portable/       Kiwix binaries + Node runtimes, win/mac/linux
+    /osiris/         the 41MB standalone build
+  Persistence partition (ext4)
+    live-boot writes here
+```
+
+`START-HERE.html` is doing real work in that list: it is the only thing that
+functions identically in all three modes, with nothing installed and nothing
+running. It should be a plain file with relative links — no build step, no
+JavaScript that matters, no server.
 
 ## Honest problems
 

@@ -16,9 +16,10 @@
  * background only to inform the *next* load:
  *
  *   1. An explicit override always wins  (?basemap=offline, or the stored flag)
- *   2. navigator.onLine === false        — no connection, do not try
- *   3. CARTO failed on a previous load   — remembered, so it fails once not twice
- *   4. otherwise                         — online, which has far more detail
+ *   2. A deployment pin                  (OSIRIS_BASEMAP, served as a meta tag)
+ *   3. navigator.onLine === false        — no connection, do not try
+ *   4. CARTO failed on a previous load   — remembered, so it fails once not twice
+ *   5. otherwise                         — online, which has far more detail
  *
  * Only the basemap is affected. Every intelligence layer is a separate live
  * feed and is untouched by this: on the offline basemap they simply stay empty
@@ -45,6 +46,9 @@ export interface BasemapEnv {
   online?: boolean;
   /** 'online' | 'offline' from the URL or storage; anything else is ignored. */
   override?: string | null;
+  /** The deployment pin: OSIRIS_BASEMAP, served as a meta tag. Outranks the
+   *  automatic checks, but not a human explicitly asking for the other one. */
+  pin?: string | null;
   /** Epoch ms of the last recorded CARTO failure, if any. */
   unreachableAt?: number | null;
   now?: number;
@@ -54,6 +58,8 @@ export interface BasemapEnv {
 export function chooseBasemap(env: BasemapEnv): BasemapChoice {
   if (env.override === 'offline') return 'offline';
   if (env.override === 'online') return 'online';
+  if (env.pin === 'offline') return 'offline';
+  if (env.pin === 'online') return 'online';
   if (env.online === false) return 'offline';
   const at = env.unreachableAt;
   const now = env.now ?? Date.now();
@@ -94,6 +100,23 @@ function readOverride(): string | null {
   return stored === 'offline' || stored === 'online' ? stored : null;
 }
 
+/**
+ * The deployment pin, rendered into the document by the root layout from
+ * OSIRIS_BASEMAP.
+ *
+ * A meta tag rather than storage, because storage is per browser profile — an
+ * appliance would have to be configured on every machine it was ever plugged
+ * into. A meta tag rather than a fetch, because this has to resolve before the
+ * map is constructed. And read at request time rather than baked in with
+ * NEXT_PUBLIC_, so one image can be flipped without rebuilding it.
+ */
+function readPin(): string | null {
+  if (typeof document === 'undefined') return null;
+  const el = document.querySelector('meta[name="osiris:basemap"]');
+  const v = el?.getAttribute('content')?.trim().toLowerCase() ?? null;
+  return v === 'offline' || v === 'online' ? v : null;
+}
+
 /** Resolved synchronously at construction time. */
 export function resolveBasemapStyle(): string {
   const raw = readStorage(UNREACHABLE_KEY);
@@ -102,6 +125,7 @@ export function resolveBasemapStyle(): string {
     chooseBasemap({
       online: typeof navigator === 'undefined' ? undefined : navigator.onLine,
       override: readOverride(),
+      pin: readPin(),
       unreachableAt,
     }),
   );
