@@ -9,11 +9,19 @@ const nextConfig: NextConfig = {
       },
     },
   },
-  output: 'standalone',
+  /* Standalone output exists for the Docker image — the Dockerfile copies
+     .next/standalone. Vercel builds its own artifacts and does not want it:
+     since the 16.2.6 -> 16.3.4 bump its adapter fails packaging with
+     `ENOENT .next/next-server.js.nft.json` in onBuildComplete when a
+     Turbopack build also emits standalone. The build itself compiles fine,
+     which is why this only ever shows up on a deploy. Keep standalone
+     everywhere except Vercel, so Docker and the platform both get what they
+     expect. */
+  output: process.env.VERCEL ? undefined : 'standalone',
   // The development-tools button Next draws at the bottom-left of every page
-  // sat on top of the layer rail's Ghost Protocol button, and its only other
-  // homes are the three corners we already use. Off, then. Build errors still
-  // surface as the full overlay; only the button goes.
+  // sat on top of the layer rail, and its only other homes are the three
+  // corners we already use. Off, then. Build errors still surface as the full
+  // overlay; only the button goes.
   devIndicators: false,
   serverExternalPackages: ['ws'],
   transpilePackages: ['react-map-gl', 'mapbox-gl', 'maplibre-gl'],
@@ -31,6 +39,17 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      /* The worker path carries the MapLibre version, so a given URL never
+         changes contents — a version bump moves it. Next serves public/ with
+         max-age=0, which made every page load refetch half a megabyte before
+         the map could start. Immutable is safe here precisely because the
+         version is in the path. */
+      {
+        source: '/vendor/maplibre/:version/:file*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
       {
         source: '/(.*)',
         headers: [
