@@ -944,7 +944,8 @@ export default function Dashboard() {
         if (cancelled) return;
         const frames = Array.isArray(d?.radar?.frames) ? d.radar.frames : [];
         setWxFrames(frames);
-        setWxCloudUrl(d?.clouds?.url ?? null);
+        // Two GIBS days keyed together in the browser; the plain URL is the fallback.
+        setWxCloudUrl(d?.clouds?.composite ?? d?.clouds?.url ?? null);
         /* Open on the newest observation. On a refresh the whole window has
            shifted forward, so an index left pointing past the end is snapped
            back rather than silently clamping to a frame that no longer exists. */

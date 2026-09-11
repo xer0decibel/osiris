@@ -76,7 +76,7 @@ Six layers added, all keyless, all toggleable, all off by default:
 | Broadcast Radio | Radio Browser | ~2,500 stations by transmitter; https-only |
 | Live TV | iptv-org | Country markers, not transmitters — see below |
 | Precipitation Radar | RainViewer | 13 frames / 2h, animated scrubber |
-| Cloud Imagery | NASA GIBS | VIIRS true colour, daily |
+| Cloud Imagery | NASA GIBS | VIIRS true colour; today keyed over yesterday in the browser — see below |
 | Named Fire Incidents | NIFC / WFIGS | 448 US wildfires, acres + containment |
 | Fire Perimeters | NIFC / WFIGS | 194 polygons, generalised to ~500m |
 
@@ -383,6 +383,25 @@ map loaded, 183 layers, sprite and glyphs through the proxy with 200s.
 
 Upstream also added a one-line `.gitattributes` (`public/vendor/** -text`).
 It says nothing about line endings, so rule 1 stands.
+
+**Cloud imagery no longer goes half dark** (`lib/cloud-composite.ts`, same
+day). The user's screenshot showed the globe with Asia in true colour and the
+Americas black behind a hard curved edge. GIBS builds each UTC day's VIIRS
+composite as the satellite goes — date line first, Americas last, around
+21:00–02:00 UTC — and a not-yet-imaged tile is solid black at low zoom (a JPEG
+cannot be transparent) and a 404 at high zoom. Measured 18:45Z: the z2
+Americas tile 100% black, Asia 0%, yesterday's Americas 0%; asking for `.png`
+returns the same JPEG. So two raster sources cannot fix it. Instead the route
+returns a `composite` template on a MapLibre custom protocol
+(`osiris-clouds://{z}/{y}/{x}?top=…&under=…`), registered once in
+`OsirisMap.tsx`; the handler fetches both days, keys today's no-data pixels
+(brightest channel ≤ 8) from yesterday's on an OffscreenCanvas, and returns a
+PNG. If one day fails, the other is used alone — which is what happens at z8
+where today's tile is a 404. No server hop, no dependency. Verified in the
+pane: Seattle (unimaged today) drew yesterday's clouds; the globe at z2.3
+fetched 24 today + 33 yesterday, all 200, and shows no seam. Known gap: the
+first ~two hours of a UTC day, when yesterday's east Pacific is not in yet
+either. The browser logs each high-zoom 404 natively; that is not the app.
 
 ## Current state (end of session 3, 2026-09-09, night)
 

@@ -19,6 +19,7 @@ import { attachTerrain, type TerrainStatus } from '@/lib/map-terrain';
 import { readHomeView, DEFAULT_VIEW } from '@/lib/homeView';
 import { resolveBasemapStyle, probeBasemapReachability } from '@/lib/basemap';
 import { applyMapProjection } from '@/lib/map-projection';
+import { CLOUD_PROTOCOL, loadCompositeTile } from '@/lib/cloud-composite';
 
 /** The catalogue fields the satellite layer and its popup actually read. */
 interface SatelliteRow {
@@ -94,6 +95,15 @@ interface OsirisMapProps {
 }
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
+
+/* Cloud tiles are two GIBS days keyed together in the browser — see
+   lib/cloud-composite. The protocol is global to the library, so it is
+   registered once here rather than per map. */
+if (typeof window !== 'undefined') {
+  maplibregl.addProtocol(CLOUD_PROTOCOL, async (params, abortController) => ({
+    data: await loadCompositeTile(params.url, abortController.signal),
+  }));
+}
 
 /* Icons drawn onto the map for cameras and fire detections. The paths are
    lucide's `cctv` and `flame` on their 24-unit grid, rasterised by createGlyph

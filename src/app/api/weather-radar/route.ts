@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { httpJson } from '@/lib/httpJson';
+import { cloudDates, gibsTileTemplate, compositeTemplate, CLOUD_LAYER } from '@/lib/cloud-composite';
 
 /**
  * OSIRIS — Weather raster overlays.
@@ -12,7 +13,9 @@ import { httpJson } from '@/lib/httpJson';
  *           past tile zoom 7 RainViewer answers 200 OK with a grey PNG reading
  *           "Zoom Level Not Supported", which a map will cheerfully draw. The
  *           source maxzoom in OsirisMap is what stops that being requested.
- *   clouds  NASA GIBS — VIIRS/NOAA-20 true-colour reflectance.
+ *   clouds  NASA GIBS — VIIRS/NOAA-20 true-colour reflectance, today's
+ *           composite keyed over yesterday's in the browser — see
+ *           lib/cloud-composite for why one day alone is half black.
  *
  * The cloud layer is true colour rather than infrared on purpose. GIBS also
  * serves MODIS brightness-temperature, which is the more literal reading of
@@ -25,8 +28,6 @@ import { httpJson } from '@/lib/httpJson';
 export const dynamic = 'force-dynamic';
 
 const RAINVIEWER_INDEX = 'https://api.rainviewer.com/public/weather-maps.json';
-const GIBS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
-const CLOUD_LAYER = 'VIIRS_NOAA20_CorrectedReflectance_TrueColor';
 
 /** RainViewer colour scheme 2 (universal blue) with smoothing and snow on. */
 const RADAR_STYLE = '2/1_1';
@@ -46,25 +47,19 @@ export interface RadarFrame {
   forecast: boolean;
 }
 
-/**
- * GIBS publishes each day's imagery some hours after acquisition, so "today"
- * is often not there yet and would render as an empty layer. Stepping back
- * twelve hours lands on a published day for most of the UTC clock without
- * pinning the view a whole day behind.
- */
-function cloudDate(nowMs: number): string {
-  return new Date(nowMs - 12 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
 export async function GET() {
   const now = Date.now();
-  const date = cloudDate(now);
+  const { top, under } = cloudDates(now);
   const clouds = {
-    date,
+    date: top,
+    under,
     layer: CLOUD_LAYER,
-    // GIBS orders the path row-before-column, so this is {z}/{y}/{x}, not the
-    // {z}/{x}/{y} the rest of the map's raster sources use.
-    url: `${GIBS}/${CLOUD_LAYER}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`,
+    /* The plain GIBS templates, for anything that wants one day as-is. The
+       map uses `composite`, a custom-protocol template the browser resolves
+       by fetching both days and filling today's black no-data from yesterday. */
+    url: gibsTileTemplate(top),
+    underUrl: gibsTileTemplate(under),
+    composite: compositeTemplate(top, under),
   };
 
   let frames: RadarFrame[] = [];
