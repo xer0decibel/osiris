@@ -16,7 +16,6 @@ import CctvPreviews, { type PreviewCamera } from '@/components/CctvPreviews';
 import MapControls from '@/components/MapControls';
 import LiveNewsPreviews, { type PreviewFeed } from '@/components/LiveNewsPreviews';
 import { attachTerrain, type TerrainStatus } from '@/lib/map-terrain';
-import { watchMapStartup, type MapStartupStatus } from '@/lib/map-startup';
 import { readHomeView, DEFAULT_VIEW } from '@/lib/homeView';
 import { resolveBasemapStyle, probeBasemapReachability } from '@/lib/basemap';
 import { applyMapProjection } from '@/lib/map-projection';
@@ -54,7 +53,7 @@ interface OsirisMapProps {
   terrainRetry?: number;
   terrainFocus?: number;
   onTerrainStatusChange?: (status: TerrainStatus) => void;
-  onRetryMap?: () => void;
+
   mapStyle?: string;
   sweepData?: any;
   scanTargets?: any[];
@@ -126,7 +125,7 @@ const GLYPH_PX = 32;
 const GLYPH_RATIO = 2;
 
 function OsirisMap({
- data, activeLayers, weatherTiles, temperatureImage = null, temperatureStations = null, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, onRetryMap, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
+ data, activeLayers, weatherTiles, temperatureImage = null, temperatureStations = null, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   /** The border files are two megabytes; they are fetched the first time the temperature layer is on, not at start. */
@@ -135,7 +134,6 @@ function OsirisMap({
   const wxFace = useRef<'a' | 'b'>('a');
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [startupStatus, setStartupStatus] = useState<MapStartupStatus>('loading');
   // Do not replay an earlier explicit zoom request after theme/retry remounts.
   const lastTerrainFocus = useRef(terrainFocus);
   const wasNavigating = useRef(false);
@@ -321,22 +319,30 @@ function OsirisMap({
       style: styleUrl,
       center: [home.lng, home.lat] as [number, number], zoom: home.zoom, minZoom: 1.5, maxZoom: 18,
       attributionControl: false as const,
-      // Keep the supported pitch range from the start; terrain must not flatten
-      // an already-positioned camera when its performance limits are attached.
-      maxPitch: 60,
-      pitch: 20,
+      maxPitch: 85,
+      transformRequest: (url: string) => {
+        // Route all CARTO CDN requests through the internal Next.js proxy API
+        if (url.includes('cartocdn.com')) {
+          const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+          return { url: `${baseUrl}/api/proxy-tiles?url=${encodeURIComponent(url)}` };
+        }
+        return { url };
+      },
     };
 
     // MapLibre asks for a high-performance WebGL2 context and throws outright if it
     // cannot get one. Some machines refuse that exact request while still granting a
-    // plainer WebGL2 context — try the low-power GPU before giving up.
+    // plainer one, so walk down to weaker requests before giving up. The WebGL1 rung
+    // this used to have cannot come back: MapLibre 6's ContextType is 'webgl2' alone,
+    // so machines that only ever managed WebGL1 are now out of reach either way.
+    // Dropping antialias is the last rung left for a struggling GPU.
     const attributeFallbacks: maplibregl.MapOptions['canvasContextAttributes'][] = [
       undefined,
       { powerPreference: 'low-power', failIfMajorPerformanceCaveat: false },
+      { powerPreference: 'low-power', failIfMajorPerformanceCaveat: false, antialias: false },
     ];
 
     let map: maplibregl.Map | undefined;
-    let initializationCancelled = false;
     for (const canvasContextAttributes of attributeFallbacks) {
       try {
         map = new maplibregl.Map(
@@ -346,16 +352,11 @@ function OsirisMap({
       } catch (e) {
         // A failed constructor leaves its canvas behind; the next attempt needs a clean container.
         container.innerHTML = '';
-        if (canvasContextAttributes === attributeFallbacks[attributeFallbacks.length - 1]) {
-          console.warn('[OSIRIS] Map initialization failed:', e);
-          queueMicrotask(() => { if (!initializationCancelled) setStartupStatus('error'); });
-          return () => { initializationCancelled = true; };
-        }
+        if (canvasContextAttributes === attributeFallbacks[attributeFallbacks.length - 1]) throw e;
         console.warn('[OSIRIS] WebGL context rejected, retrying with weaker attributes:', e instanceof Error ? e.message : e);
       }
     }
     if (!map) return;
-    const stopWatchingStartup = watchMapStartup(map, setStartupStatus);
 
     map.on('load', () => {
       mapRef.current = map;
@@ -1935,7 +1936,7 @@ function OsirisMap({
       });
     });
 
-    return () => { stopWatchingStartup(); cancelAnimationFrame(hoverFrame); map.remove(); mapRef.current = null; };
+    return () => { cancelAnimationFrame(hoverFrame); map.remove(); mapRef.current = null; };
   }, []);
 
   // Day/Night
@@ -2776,10 +2777,14 @@ function OsirisMap({
     if (!mapReady || !mapRef.current) return;
     const map = mapRef.current;
     try {
-      const projectionChanged = applyMapProjection(map, projection);
+      const projectionChanged = applyMapProjection(map, projection, terrainEnabled);
       const configureSky = projectionChanged || !containerRef.current?.dataset.mapProjection;
       if (containerRef.current) containerRef.current.dataset.mapProjection = projection;
       if (projection === 'globe') {
+        // The overview globe's resting tilt, which used to be the initial
+        // pitch. Only on a real projection change, so toggling terrain never
+        // re-tilts a camera the user has already placed.
+        if (configureSky && map.getPitch() < 0.5) map.easeTo({ pitch: 20, duration: 1200 });
         try {
           if (configureSky) map.setSky({
             'sky-color': '#04040A',
@@ -2796,7 +2801,7 @@ function OsirisMap({
     } catch (e) {
       console.warn('Projection switch failed:', e);
     }
-  }, [mapReady, projection]);
+  }, [mapReady, projection, terrainEnabled]);
 
   // Terrain loads only at regional zooms; globe overview stays inexpensive.
   useEffect(() => {
@@ -3544,18 +3549,7 @@ function OsirisMap({
 
   return (
     <>
-      <div ref={containerRef} data-map-status={startupStatus} className="absolute inset-0 w-full h-full" />
-      {startupStatus !== 'ready' && (
-        <div className="absolute inset-0 z-[10] flex items-center justify-center pointer-events-none">
-          <div role="status" className="pointer-events-auto max-w-[min(360px,85vw)] rounded-xl border border-[var(--border-primary)] bg-[var(--bg-secondary)]/95 p-5 text-center shadow-lg">
-            <p className="text-sm text-[var(--text-primary)]">{startupStatus === 'loading' ? 'Loading map…' : 'The map couldn’t finish loading'}</p>
-            {startupStatus === 'error' && <>
-              <p className="mt-2 text-xs text-[var(--text-secondary)]">A map request or graphics connection failed. Your dashboard is still available.</p>
-              <button type="button" onClick={onRetryMap} className="mt-4 rounded-md border border-[var(--border-primary)] px-4 py-2 text-xs text-[var(--gold-primary)] hover:bg-[var(--hover-accent)]">Retry map</button>
-            </>}
-          </div>
-        </div>
-      )}
+      <div ref={containerRef} className="absolute inset-0 w-full h-full" />
       {mapReady && mapRef.current && (
         <CctvPreviews
           mapRef={mapRef}

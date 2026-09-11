@@ -133,7 +133,7 @@ export default function Dashboard() {
   const [dossierLoading, setDossierLoading] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const autoLocateCancelled = useRef(false);
-  const [mapRetry, setMapRetry] = useState(0);
+
   const [activeCamera, setActiveCamera] = useState<any>(null);
   const [activeStation, setActiveStation] = useState<any>(null);
   const [activeTvCountry, setActiveTvCountry] = useState<any>(null);
@@ -1404,8 +1404,6 @@ export default function Dashboard() {
       {/* ── MAP ── */}
       <ErrorBoundary name="Map">
         <OsirisMap 
-          key={`map-${mapRetry}`}
-          onRetryMap={() => setMapRetry(retry => retry + 1)}
           data={data} 
           activeLayers={activeLayers} 
           weatherTiles={weatherTiles}
