@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cloudDates, compositeTemplate, parseCompositeUrl, gibsTileUrl, fillNoData, chooseTiles, countNoData, paintInfrared,
+  cloudDates, compositeTemplate, parseCompositeUrl, gibsTileUrl, fillNoData, fillAndFeather, chooseTiles, countNoData, paintInfrared,
   NO_DATA_MAX, CLOUD_PROTOCOL, INFRARED_LAYER, CLOUD_WHITE, OCEAN_NAVY, IR_WARM_K, IR_COLD_K,
 } from './cloud-composite';
 import { temperatureOf, rampColour, BT_MIN_K, BT_MAX_K, BT_ENTRIES } from './gibs-bt-ramp';
@@ -62,6 +62,52 @@ describe('paintInfrared', () => {
     const px = new Uint8ClampedArray([...rampColour(0), 255, ...rampColour(BT_ENTRIES - 1), 255]);
     paintInfrared(px);
     expect(countNoData(px)).toBe(0);
+  });
+});
+
+describe('fillAndFeather', () => {
+  /** A 5×1 strip: pixel 0 is no-data, the rest are white; underneath is all 100. */
+  const strip = () => ({
+    top: new Uint8ClampedArray([0, 0, 0, 255, 250, 250, 250, 255, 250, 250, 250, 255, 250, 250, 250, 255, 250, 250, 250, 255]),
+    under: new Uint8ClampedArray(20).fill(100),
+  });
+
+  it('copies the mask and blends outward in steps, leaving the far side alone', () => {
+    const { top, under } = strip();
+    expect(fillAndFeather(top, under, 5, 1, 2)).toBe(1);
+    const grey = (i: number) => top[i * 4];
+    expect(grey(0)).toBe(100);                       // d=0: under
+    expect(grey(1)).toBe(Math.round(250 + (2 / 3) * (100 - 250))); // d=1: two thirds under
+    expect(grey(2)).toBe(Math.round(250 + (1 / 3) * (100 - 250))); // d=2: one third
+    expect(grey(3)).toBe(250);                       // beyond the radius
+    expect(grey(4)).toBe(250);
+  });
+
+  it('with radius 0 is fillNoData', () => {
+    const a = strip(), b = strip();
+    fillAndFeather(a.top, a.under, 5, 1, 0);
+    fillNoData(b.top, b.under);
+    expect(Array.from(a.top)).toEqual(Array.from(b.top));
+  });
+
+  it('pulls the ringing beside a seam toward the fill', () => {
+    // no-data, then a JPEG-ringing pixel of 30, then real cloud
+    const top = new Uint8ClampedArray([0, 0, 0, 255, 30, 30, 30, 255, 250, 250, 250, 255]);
+    const under = new Uint8ClampedArray(12).fill(230);
+    fillAndFeather(top, under, 3, 1, 1);
+    expect(top[4]).toBe(Math.round(30 + 0.5 * (230 - 30)));
+    expect(top[8]).toBe(250);
+  });
+
+  it('does nothing to a tile with no holes', () => {
+    const top = new Uint8ClampedArray([250, 250, 250, 255, 24, 28, 40, 255]);
+    const before = Array.from(top);
+    expect(fillAndFeather(top, new Uint8ClampedArray(8).fill(9), 2, 1, 3)).toBe(0);
+    expect(Array.from(top)).toEqual(before);
+  });
+
+  it('refuses a size that does not match the buffers', () => {
+    expect(() => fillAndFeather(new Uint8ClampedArray(8), new Uint8ClampedArray(8), 3, 1)).toThrow(/3×1/);
   });
 });
 

@@ -440,7 +440,18 @@ brightness 244/255) and just south the infrared reads 228–251 K, so a first
 cut with white at 236 K painted 245 K as mid grey and the step was plain in
 the globe view. Cold ice sheet comes out white, which is what the photograph
 would show too. Verified: the cloud field runs across the 70°S seam, no
-script errors. If anyone wants the
+script errors.
+
+**The seam then showed as a ring of dark dashes.** Measured on real tiles: a
+swath edge is not a line but a band about eight rows deep where the no-data
+fraction climbs from 0 to 1, and the pixels in between are JPEG ringing at
+9–40 on the brightest channel — too bright for the no-data mask, too dark
+to be cloud — so no fill touched them. `fillAndFeather` replaces the hard
+fill in the loader: the mask is dilated six pixels (Chebyshev, BFS) and a
+pixel d steps out takes 1 − d/7 of the fill, so the ringing is mostly
+fill and the seam is a gradient. Used for both the yesterday fill and the
+infrared fill, so today's swath edges over the Americas feather too.
+Verified at z3.4 over the Peninsula: a soft grey band, no dashes. If anyone wants the
 infrared everywhere at night rather than only in the polar hole, the
 mechanism is the same; the daily composites have no night side to fill, so
 it would need a different top layer.

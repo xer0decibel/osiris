@@ -139,6 +139,59 @@ export function fillNoData(top: Uint8ClampedArray, under: Uint8ClampedArray, max
   return filled;
 }
 
+/**
+ * How far the fill reaches past the no-data mask, in pixels. Measured on real
+ * tiles: the edge of a swath is not a line but a band about eight rows deep
+ * where the no-data fraction climbs from 0 to 1, and the pixels in between are
+ * JPEG ringing — 9 to 40 on the brightest channel, too bright for the mask and
+ * too dark to be cloud. Copied through as they were, they drew as a ring of
+ * dark dashes along 70°S. Six pixels covers the band and keeps the blend
+ * inside a JPEG block's worth of real imagery.
+ */
+export const FEATHER_PX = 6;
+
+/**
+ * fillNoData with a soft edge. The mask is the no-data pixels of `top`; a
+ * pixel d steps from the mask (Chebyshev, d ≤ radius) takes 1 − d/(radius+1)
+ * of `under`, so the seam is a gradient rather than a step and the ringing
+ * beside it is mostly `under`. Radius 0 is fillNoData. Returns the mask count.
+ */
+export function fillAndFeather(
+  top: Uint8ClampedArray, under: Uint8ClampedArray, width: number, height: number, radius = FEATHER_PX, max = NO_DATA_MAX,
+): number {
+  if (top.length !== under.length) throw new Error(`fillAndFeather: ${top.length} vs ${under.length} bytes`);
+  if (top.length !== width * height * 4) throw new Error(`fillAndFeather: ${width}×${height} is not ${top.length / 4} pixels`);
+  const dist = new Uint8Array(width * height).fill(255);
+  let frontier: number[] = [];
+  let masked = 0;
+  for (let p = 0; p < width * height; p++) {
+    const i = p * 4;
+    if (top[i] <= max && top[i + 1] <= max && top[i + 2] <= max) { dist[p] = 0; frontier.push(p); masked++; }
+  }
+  for (let d = 1; d <= radius && frontier.length; d++) {
+    const next: number[] = [];
+    for (const p of frontier) {
+      const x = p % width, y = (p - x) / width;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const q = ny * width + nx;
+        if (dist[q] === 255) { dist[q] = d; next.push(q); }
+      }
+    }
+    frontier = next;
+  }
+  for (let p = 0; p < width * height; p++) {
+    const d = dist[p];
+    if (d === 255) continue;
+    const i = p * 4;
+    if (d === 0) { top[i] = under[i]; top[i + 1] = under[i + 1]; top[i + 2] = under[i + 2]; top[i + 3] = under[i + 3]; continue; }
+    const t = 1 - d / (radius + 1);
+    for (let c = 0; c < 4; c++) top[i + c] = Math.round(top[i + c] + t * (under[i + c] - top[i + c]));
+  }
+  return masked;
+}
+
 /** How many pixels are still no-data — what decides whether the infrared is fetched at all. */
 export function countNoData(px: Uint8ClampedArray, max = NO_DATA_MAX): number {
   let n = 0;
@@ -231,7 +284,7 @@ export async function loadCompositeTile(url: string, signal?: AbortSignal): Prom
   let out = g.createImageData(size, size);
   if (choice.mode === 'composite') {
     out = await pixelsOf(choice.top);
-    fillNoData(out.data, (await pixelsOf(choice.under)).data);
+    fillAndFeather(out.data, (await pixelsOf(choice.under)).data, size, size);
   } else if (choice.mode === 'single') {
     out = await pixelsOf(choice.tile);
   }
@@ -244,7 +297,7 @@ export async function loadCompositeTile(url: string, signal?: AbortSignal): Prom
     if ('tile' in ir && ir.tile) {
       const irPixels = await pixelsOf(ir.tile);
       paintInfrared(irPixels.data);
-      fillNoData(out.data, irPixels.data);
+      fillAndFeather(out.data, irPixels.data, size, size);
     }
   }
 
