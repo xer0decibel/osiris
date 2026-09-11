@@ -24,9 +24,36 @@
  * third fetch per tile; not worth it for two hours.
  */
 
+import { temperatureOf } from './gibs-bt-ramp';
+
 export const GIBS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
 export const CLOUD_LAYER = 'VIIRS_NOAA20_CorrectedReflectance_TrueColor';
+/**
+ * The same instrument's thermal channel, night passes. It needs no sun, so it
+ * has the poles in their winter and it is the third fill under the two true
+ * colour days — used only where both of those have nothing, which in
+ * September is everything south of 70°S. Measured 2026-09-11: the true colour
+ * row from 79°S to the pole is a 404 on every column while this layer's is a
+ * full 29 KB tile.
+ */
+export const INFRARED_LAYER = 'VIIRS_NOAA20_Brightness_Temp_BandI5_Night';
 export const CLOUD_PROTOCOL = 'osiris-clouds';
+
+/**
+ * How the infrared is recoloured to sit beside the true colour. NASA paints
+ * brightness temperature on a navy-to-white ramp that reads as a purple wash
+ * next to a photograph, so each pixel is taken back to kelvin through the
+ * published ramp and repainted between the two colours the true colour tiles
+ * actually have — measured as the median of their ocean and cloud pixels —
+ * with the layer's own opacity doing the rest. 276 K is water just above
+ * freezing, which is the open Southern Ocean; 236 K is a cloud top, and also
+ * the Antarctic plateau at night, which the true colour would show as white
+ * ice anyway.
+ */
+export const CLOUD_WHITE: [number, number, number] = [230, 230, 234];
+export const OCEAN_NAVY: [number, number, number] = [24, 28, 40];
+export const IR_WARM_K = 276;
+export const IR_COLD_K = 236;
 /** GIBS Level9 tiles are 256px; the source in OsirisMap declares the size and the z9 ceiling. */
 export const CLOUD_TILE_SIZE = 256;
 
@@ -51,12 +78,12 @@ export function cloudDates(nowMs: number): { top: string; under: string } {
 }
 
 /** GIBS orders the path row-before-column, so this is {z}/{y}/{x}. */
-export function gibsTileTemplate(date: string): string {
-  return `${GIBS}/${CLOUD_LAYER}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+export function gibsTileTemplate(date: string, layer = CLOUD_LAYER): string {
+  return `${GIBS}/${layer}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
 }
 
-export function gibsTileUrl(date: string, z: number, y: number, x: number): string {
-  return gibsTileTemplate(date)
+export function gibsTileUrl(date: string, z: number, y: number, x: number, layer = CLOUD_LAYER): string {
+  return gibsTileTemplate(date, layer)
     .replace('{z}', String(z))
     .replace('{y}', String(y))
     .replace('{x}', String(x));
@@ -109,6 +136,33 @@ export function fillNoData(top: Uint8ClampedArray, under: Uint8ClampedArray, max
   return filled;
 }
 
+/** How many pixels are still no-data — what decides whether the infrared is fetched at all. */
+export function countNoData(px: Uint8ClampedArray, max = NO_DATA_MAX): number {
+  let n = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i] <= max && px[i + 1] <= max && px[i + 2] <= max) n++;
+  }
+  return n;
+}
+
+/**
+ * Repaints a NASA brightness-temperature tile, in place, as cloud: each pixel
+ * back to kelvin through the ramp, then between OCEAN_NAVY at IR_WARM_K and
+ * CLOUD_WHITE at IR_COLD_K, opaque. Nothing it produces is ever no-data, so a
+ * later fill leaves it alone.
+ */
+export function paintInfrared(px: Uint8ClampedArray): void {
+  const span = IR_WARM_K - IR_COLD_K;
+  for (let i = 0; i < px.length; i += 4) {
+    const k = temperatureOf(px[i], px[i + 1], px[i + 2]);
+    const t = Math.min(1, Math.max(0, (IR_WARM_K - k) / span));
+    px[i] = Math.round(OCEAN_NAVY[0] + t * (CLOUD_WHITE[0] - OCEAN_NAVY[0]));
+    px[i + 1] = Math.round(OCEAN_NAVY[1] + t * (CLOUD_WHITE[1] - OCEAN_NAVY[1]));
+    px[i + 2] = Math.round(OCEAN_NAVY[2] + t * (CLOUD_WHITE[2] - OCEAN_NAVY[2]));
+    px[i + 3] = 255;
+  }
+}
+
 /** What a day's fetch came back as: a tile, no tile (GIBS answers 404 past the swath at high zoom), or a failure. */
 export type DayTile = { tile: Blob } | { tile: null } | { error: unknown };
 
@@ -144,37 +198,54 @@ export async function loadCompositeTile(url: string, signal?: AbortSignal): Prom
   const req = parseCompositeUrl(url);
   if (!req) throw new Error(`Not a cloud composite URL: ${url}`);
 
-  const fetchDay = async (date: string): Promise<DayTile> => {
+  const fetchDay = async (date: string, layer: string): Promise<DayTile> => {
     try {
-      const res = await fetch(gibsTileUrl(date, req.z, req.y, req.x), { signal });
+      const res = await fetch(gibsTileUrl(date, req.z, req.y, req.x, layer), { signal });
       if (res.status === 404) return { tile: null };
-      if (!res.ok) throw new Error(`GIBS ${res.status} for ${date}`);
+      if (!res.ok) throw new Error(`GIBS ${res.status} for ${layer} ${date}`);
       return { tile: await res.blob() };
     } catch (error) {
       return { error };
     }
   };
 
-  const choice = chooseTiles(...(await Promise.all([fetchDay(req.top), fetchDay(req.under)])));
-  const size = CLOUD_TILE_SIZE;
-  if (choice.mode === 'empty') {
-    const blank = await new OffscreenCanvas(size, size).convertToBlob({ type: 'image/png' });
-    return blank.arrayBuffer();
-  }
-  if (choice.mode === 'single') return choice.tile.arrayBuffer();
+  const choice = chooseTiles(...(await Promise.all([fetchDay(req.top, CLOUD_LAYER), fetchDay(req.under, CLOUD_LAYER)])));
 
-  const paint = async (blob: Blob) => {
+  const size = CLOUD_TILE_SIZE;
+  const canvas = new OffscreenCanvas(size, size);
+  const g = canvas.getContext('2d');
+  if (!g) throw new Error('No 2d context for cloud tile');
+  const pixelsOf = async (blob: Blob) => {
     const bitmap = await createImageBitmap(blob);
-    const canvas = new OffscreenCanvas(size, size);
-    const g = canvas.getContext('2d');
-    if (!g) throw new Error('No 2d context for cloud tile');
+    g.clearRect(0, 0, size, size);
     g.drawImage(bitmap, 0, 0, size, size);
     bitmap.close();
-    return { canvas, g, pixels: g.getImageData(0, 0, size, size) };
+    return g.getImageData(0, 0, size, size);
   };
-  const [a, b] = await Promise.all([paint(choice.top), paint(choice.under)]);
-  fillNoData(a.pixels.data, b.pixels.data);
-  a.g.putImageData(a.pixels, 0, 0);
-  const png = await a.canvas.convertToBlob({ type: 'image/png' });
+
+  /* A transparent tile when neither day has it; the fills below treat
+     transparent black as no-data like any other. */
+  let out = g.createImageData(size, size);
+  if (choice.mode === 'composite') {
+    out = await pixelsOf(choice.top);
+    fillNoData(out.data, (await pixelsOf(choice.under)).data);
+  } else if (choice.mode === 'single') {
+    out = await pixelsOf(choice.tile);
+  }
+
+  /* Third fill: the night infrared, fetched only for a tile that still has
+     holes — most of the world never gets here. Its failure is not reported:
+     it is a fallback for a fallback, and the tile is no worse without it. */
+  if (countNoData(out.data) > 0) {
+    const ir = await fetchDay(req.under, INFRARED_LAYER);
+    if ('tile' in ir && ir.tile) {
+      const irPixels = await pixelsOf(ir.tile);
+      paintInfrared(irPixels.data);
+      fillNoData(out.data, irPixels.data);
+    }
+  }
+
+  g.putImageData(out, 0, 0);
+  const png = await canvas.convertToBlob({ type: 'image/png' });
   return png.arrayBuffer();
 }

@@ -76,7 +76,7 @@ Six layers added, all keyless, all toggleable, all off by default:
 | Broadcast Radio | Radio Browser | ~2,500 stations by transmitter; https-only |
 | Live TV | iptv-org | Country markers, not transmitters — see below |
 | Precipitation Radar | RainViewer | 13 frames / 2h, animated scrubber |
-| Cloud Imagery | NASA GIBS | VIIRS true colour; today keyed over yesterday in the browser — see below |
+| Cloud Imagery | NASA GIBS | VIIRS true colour; today keyed over yesterday, night infrared under both, all in the browser — see below |
 | Named Fire Incidents | NIFC / WFIGS | 448 US wildfires, acres + containment |
 | Fire Perimeters | NIFC / WFIGS | 194 polygons, generalised to ~500m |
 
@@ -418,6 +418,28 @@ error; `chooseTiles` (pure, tested) now returns an empty tile for that —
 no data is not a failure — and rethrows only when a real failure leaves
 nothing to draw. Lesson: verify a layer with the layers it will share the map
 with, not alone.
+
+**Antarctica was a blank disc, and now the night infrared fills it.** The
+user asked why. Measured: yesterday's true colour stops at exactly 70.0°S on
+every column, a hard line; the row from 79°S to the pole is a 404, while the
+Arctic rows to 85°N are full. NASA's reflectance product is daytime-only and
+this close to the equinox the far south does not qualify, so it is the
+product, not the app. The same instrument's thermal channel
+(`VIIRS_NOAA20_Brightness_Temp_BandI5_Night`) has the pole: 29 KB where the
+true colour is a 404. It is now the third fill in the composite, fetched
+only for a tile that still has no-data after both days — 15 of 40 tiles at
+a polar view, none elsewhere. NASA paints it on a navy-to-white temperature
+ramp (`lib/gibs-bt-ramp.ts`, 255 entries 180–340 K, taken from the
+published colormap with a nearest-colour lookup), which read as a purple
+wash next to a photograph; each pixel goes back to kelvin and is repainted
+between the true colour's own ocean navy (24,28,40) and cloud white
+(230,230,234), both measured as medians of real tiles: 276 K and warmer is
+navy, 236 K and colder is white. Cold ice sheet comes out white, which is
+what the photograph would show too. Verified: the cloud field runs across
+the 70°S seam with a faint tonal step, no script errors. If anyone wants the
+infrared everywhere at night rather than only in the polar hole, the
+mechanism is the same; the daily composites have no night side to fill, so
+it would need a different top layer.
 
 ## Current state (end of session 3, 2026-09-09, night)
 

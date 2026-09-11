@@ -168,7 +168,7 @@ const LAYER_GROUPS: LayerGroupDef[] = [
     icon: CloudRain,
     layers: [
       { key: 'wx_radar', label: 'Precipitation Radar', description: 'Animated · last 2 hours', dataKey: '' },
-      { key: 'wx_clouds', label: 'Cloud Imagery', description: 'VIIRS true colour · today over yesterday', dataKey: '' },
+      { key: 'wx_clouds', label: 'Cloud Imagery', description: 'VIIRS true colour · today over yesterday · infrared where the sun is down', dataKey: '' },
       { key: 'wx_temp', label: 'Surface Temperature', description: 'Isotherms · Open-Meteo + NWS stations · GFS globe', dataKey: '' },
     ],
   },
