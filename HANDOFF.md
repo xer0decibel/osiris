@@ -361,6 +361,29 @@ The useful half of this document.
 
 ---
 
+## 2026-09-11 morning: upstream #335 merged
+
+Upstream's #335 (2026-09-10) is merged: 85 commits ahead of `upstream/master`,
+0 behind, **not yet pushed to the fork**. 739 tests pass, 18 skipped; typecheck
+clean; lint unchanged per file (`page.tsx` 94, `OsirisMap.tsx` 146). Two
+conflicts, both in `page.tsx` and `OsirisMap.tsx`, eight hunks.
+
+What #335 did and how it was resolved: the author dropped the map-startup
+watchdog and its "The map couldn't finish loading" banner (it covered a working
+map), so the retry key and `onRetryMap` prop went with it; the terrain-only
+projection curve moved out of the default globe into
+`TERRAIN_GLOBE_PROJECTION`, and `applyMapProjection` now takes
+`terrainEnabled`; `maxPitch` is back to 85 with the resting tilt applied by
+`easeTo` on projection change; and the CARTO requests go through
+`/api/proxy-tiles` again via `transformRequest`. Our synchronous
+online/offline resolver in `lib/basemap` is kept — the style URL is still
+`/dark-matter-style.json` or the offline file — and the proxy transform is a
+no-op for the offline style, which has no CARTO URLs. Verified in the pane:
+map loaded, 183 layers, sprite and glyphs through the proxy with 200s.
+
+Upstream also added a one-line `.gitattributes` (`public/vendor/** -text`).
+It says nothing about line endings, so rule 1 stands.
+
 ## Current state (end of session 3, 2026-09-09, night)
 
 **754 tests pass** (upstream's own included since the merge), typecheck clean,
