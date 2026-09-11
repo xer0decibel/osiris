@@ -2404,7 +2404,17 @@ function OsirisMap({
         if (map.getSource(id)) map.removeSource(id);
         return;
       }
-      if (existing) { existing.setTiles([url]); return; }
+      if (existing) {
+        /* Every radar frame re-runs this effect, and setTiles reloads every
+           tile of a source even when the template has not changed. For the
+           clouds that re-decoded the whole layer per frame and, once the tiles
+           were composited in the browser, re-fetched and re-keyed all of them
+           per frame — the map showed a patchwork of tiles mid-reload.
+           Measured: 635 GIBS requests in twenty seconds at one view. */
+        if (existing.tiles?.length === 1 && existing.tiles[0] === url) return;
+        existing.setTiles([url]);
+        return;
+      }
       map.addSource(id, { type: 'raster', tiles: [url], tileSize, maxzoom });
       map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacity } }, beforeId());
     };

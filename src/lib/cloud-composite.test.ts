@@ -1,7 +1,40 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cloudDates, compositeTemplate, parseCompositeUrl, gibsTileUrl, fillNoData, NO_DATA_MAX, CLOUD_PROTOCOL,
+  cloudDates, compositeTemplate, parseCompositeUrl, gibsTileUrl, fillNoData, chooseTiles, NO_DATA_MAX, CLOUD_PROTOCOL,
 } from './cloud-composite';
+
+const TODAY = new Blob(['today']);
+const YESTERDAY = new Blob(['yesterday']);
+
+/**
+ * GIBS answers a not-yet-imaged tile with black at low zoom and a 404 at high
+ * zoom, and either day can be missing. What gets drawn must follow from that
+ * without a canvas in the loop.
+ */
+describe('chooseTiles', () => {
+  it('composites when both days are there', () => {
+    expect(chooseTiles({ tile: TODAY }, { tile: YESTERDAY })).toEqual({ mode: 'composite', top: TODAY, under: YESTERDAY });
+  });
+
+  it('draws yesterday alone where today is a 404, which is every high-zoom tile before its pass', () => {
+    expect(chooseTiles({ tile: null }, { tile: YESTERDAY })).toEqual({ mode: 'single', tile: YESTERDAY });
+  });
+
+  it('draws today alone where yesterday failed', () => {
+    expect(chooseTiles({ tile: TODAY }, { error: new Error('offline') })).toEqual({ mode: 'single', tile: TODAY });
+  });
+
+  it('draws nothing, silently, when neither day has the tile', () => {
+    expect(chooseTiles({ tile: null }, { tile: null })).toEqual({ mode: 'empty' });
+  });
+
+  it('rethrows a failure only when there is nothing to fall back on', () => {
+    const boom = new Error('offline');
+    expect(() => chooseTiles({ error: boom }, { tile: null })).toThrow(boom);
+    expect(() => chooseTiles({ tile: null }, { error: boom })).toThrow(boom);
+    expect(() => chooseTiles({ error: boom }, { error: new Error('also') })).toThrow(boom);
+  });
+});
 
 /**
  * The dates are the whole point: today's partial composite on top, yesterday's

@@ -403,6 +403,22 @@ fetched 24 today + 33 yesterday, all 200, and shows no seam. Known gap: the
 first ~two hours of a UTC day, when yesterday's east Pacific is not in yet
 either. The browser logs each high-zoom 404 natively; that is not the app.
 
+**Then the user's screenshot showed the clouds as a patchwork of rectangles
+with the radar on** — and 366 issues. Measured in the pane: 635 GIBS requests
+in twenty seconds at one view, where a z3 globe needs ~128. The weather
+effect re-runs every radar frame and called `setTiles` on the cloud source
+with an unchanged template, and MapLibre reloads every tile of a source on
+`setTiles` regardless. With plain GIBS URLs the browser cache hid it (the
+layer still re-decoded per frame); with browser-side compositing every frame
+re-fetched and re-keyed the whole layer, and the rectangles were tiles
+mid-reload. `apply` now skips `setTiles` when the template is the same.
+After: zero cloud requests over twenty seconds of radar animation. Also, the
+loader threw on a tile missing from both days and MapLibre logged each as an
+error; `chooseTiles` (pure, tested) now returns an empty tile for that —
+no data is not a failure — and rethrows only when a real failure leaves
+nothing to draw. Lesson: verify a layer with the layers it will share the map
+with, not alone.
+
 ## Current state (end of session 3, 2026-09-09, night)
 
 **754 tests pass** (upstream's own included since the merge), typecheck clean,

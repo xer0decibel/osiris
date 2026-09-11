@@ -109,31 +109,60 @@ export function fillNoData(top: Uint8ClampedArray, under: Uint8ClampedArray, max
   return filled;
 }
 
+/** What a day's fetch came back as: a tile, no tile (GIBS answers 404 past the swath at high zoom), or a failure. */
+export type DayTile = { tile: Blob } | { tile: null } | { error: unknown };
+
+/**
+ * Decides what to draw from the two days. Pure, so the branches are testable
+ * without a canvas. Both present: composite. One: that one alone, and the
+ * layer is no worse than before this existed. Neither, and neither failed:
+ * an empty tile — no data is not an error, and reporting it as one is what
+ * put a console error on every high-zoom tile before a pass arrives. A
+ * failure with nothing to fall back on is rethrown, so MapLibre leaves the
+ * tile empty and says so.
+ */
+export function chooseTiles(top: DayTile, under: DayTile):
+  | { mode: 'composite'; top: Blob; under: Blob }
+  | { mode: 'single'; tile: Blob }
+  | { mode: 'empty' } {
+  const t = 'tile' in top ? top.tile : null;
+  const u = 'tile' in under ? under.tile : null;
+  if (t && u) return { mode: 'composite', top: t, under: u };
+  if (t) return { mode: 'single', tile: t };
+  if (u) return { mode: 'single', tile: u };
+  if ('error' in top) throw top.error;
+  if ('error' in under) throw under.error;
+  return { mode: 'empty' };
+}
+
 /**
  * MapLibre's loader for `osiris-clouds://` tiles. Main thread only — it needs
  * fetch, createImageBitmap and OffscreenCanvas. Returns encoded image bytes,
  * which is the one form the library documents for a custom protocol.
- *
- * If only one day can be fetched, that day is returned alone; the layer is
- * then no worse than it was before this existed. Both failing is an error,
- * and MapLibre leaves the tile empty.
  */
 export async function loadCompositeTile(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
   const req = parseCompositeUrl(url);
   if (!req) throw new Error(`Not a cloud composite URL: ${url}`);
 
-  const fetchTile = async (date: string): Promise<Blob> => {
-    const res = await fetch(gibsTileUrl(date, req.z, req.y, req.x), { signal });
-    if (!res.ok) throw new Error(`GIBS ${res.status} for ${date}`);
-    return res.blob();
+  const fetchDay = async (date: string): Promise<DayTile> => {
+    try {
+      const res = await fetch(gibsTileUrl(date, req.z, req.y, req.x), { signal });
+      if (res.status === 404) return { tile: null };
+      if (!res.ok) throw new Error(`GIBS ${res.status} for ${date}`);
+      return { tile: await res.blob() };
+    } catch (error) {
+      return { error };
+    }
   };
 
-  const [top, under] = await Promise.allSettled([fetchTile(req.top), fetchTile(req.under)]);
-  if (top.status === 'rejected' && under.status === 'rejected') throw top.reason;
-  if (top.status === 'rejected') return (under as PromiseFulfilledResult<Blob>).value.arrayBuffer();
-  if (under.status === 'rejected') return top.value.arrayBuffer();
-
+  const choice = chooseTiles(...(await Promise.all([fetchDay(req.top), fetchDay(req.under)])));
   const size = CLOUD_TILE_SIZE;
+  if (choice.mode === 'empty') {
+    const blank = await new OffscreenCanvas(size, size).convertToBlob({ type: 'image/png' });
+    return blank.arrayBuffer();
+  }
+  if (choice.mode === 'single') return choice.tile.arrayBuffer();
+
   const paint = async (blob: Blob) => {
     const bitmap = await createImageBitmap(blob);
     const canvas = new OffscreenCanvas(size, size);
@@ -143,7 +172,7 @@ export async function loadCompositeTile(url: string, signal?: AbortSignal): Prom
     bitmap.close();
     return { canvas, g, pixels: g.getImageData(0, 0, size, size) };
   };
-  const [a, b] = await Promise.all([paint(top.value), paint(under.value)]);
+  const [a, b] = await Promise.all([paint(choice.top), paint(choice.under)]);
   fillNoData(a.pixels.data, b.pixels.data);
   a.g.putImageData(a.pixels, 0, 0);
   const png = await a.canvas.convertToBlob({ type: 'image/png' });
