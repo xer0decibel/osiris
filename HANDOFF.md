@@ -442,22 +442,27 @@ the globe view. Cold ice sheet comes out white, which is what the photograph
 would show too. Verified: the cloud field runs across the 70°S seam, no
 script errors.
 
-**The seam then showed as a ring of dark dashes.** Measured on real tiles: a
-swath edge is not a line but a band about eight rows deep where the no-data
-fraction climbs from 0 to 1, and the pixels in between are JPEG ringing at
-9–40 on the brightest channel — too bright for the no-data mask, too dark
-to be cloud — so no fill touched them. `fillAndFeather` replaces the hard
-fill in the loader: the mask is dilated six pixels (Chebyshev, BFS) and a
-pixel d steps out takes 1 − d/7 of the fill, so the ringing is mostly
-fill and the seam is a gradient. Used for both the yesterday fill and the
-infrared fill, so today's swath edges over the Americas feather too.
-Verified at z3.4 over the Peninsula: a soft grey band, no dashes.
+**The seam then showed as a ring of dark dashes, then as a dark band.**
+Measured on real tiles: a swath edge is not a line but a band about eight
+rows deep where the no-data fraction climbs from 0 to 1, and the pixels in
+between are JPEG ringing at 9–40 on the brightest channel — too bright for
+the no-data mask, too dark to be cloud. A first fix feathered the fill
+outward from the mask, which turned the dashes into a dark band: the
+feather pulled the bright pixels beside the seam toward yesterday's black
+there (both days are cut at 70°S), and the infrared fill afterwards only
+half recovered them. A fill is not a blend. The loader now composites
+front-to-back by per-layer confidence (`dataWeights`: 0 on a tile's
+no-data plus any ringing-dark pixel within six of it, ramping to 1 six
+pixels out; `compositeWeighted`: each layer takes its weight of what the
+layers above left, colours normalised, alpha the coverage), so no layer is
+ever blended toward another's hole. Verified at z3.4 over the Peninsula: a
+soft gradient, no band; at the globe: no ring.
 
-**And the pole was a flat white disc.** Mercator stops at 85.05° and
-MapLibre's globe paints the cap beyond it in the colour of the tile's last
-row; with the infrared filling that row, the cap went ice-white. The loader
-now fades the outermost 16 rows of a pole-edge tile (y = 0 or y = 2^z − 1)
-to transparent, so the cap is the basemap. Both poles, for consistency. If anyone wants the
+The pole cap is MapLibre's doing: Mercator stops at 85.05° and the globe
+paints the cap beyond it in the colour of the tile's last row, so with the
+infrared it is ice-grey. A fade of the edge rows to transparent was tried
+and reverted — it made a black disc, which was worse, and the user had
+meant the ring, not the centre.
 infrared everywhere at night rather than only in the polar hole, the
 mechanism is the same; the daily composites have no night side to fill, so
 it would need a different top layer.

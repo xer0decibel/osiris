@@ -120,54 +120,21 @@ export function parseCompositeUrl(url: string): CompositeRequest | null {
 }
 
 /**
- * Fills the no-data pixels of `top` from `under`, in place. Both are RGBA of
- * the same length. Returns how many pixels were filled, so a caller — or a
- * test — can tell "nothing needed filling" from "everything did".
- */
-export function fillNoData(top: Uint8ClampedArray, under: Uint8ClampedArray, max = NO_DATA_MAX): number {
-  if (top.length !== under.length) throw new Error(`fillNoData: ${top.length} vs ${under.length} bytes`);
-  let filled = 0;
-  for (let i = 0; i < top.length; i += 4) {
-    if (top[i] <= max && top[i + 1] <= max && top[i + 2] <= max) {
-      top[i] = under[i];
-      top[i + 1] = under[i + 1];
-      top[i + 2] = under[i + 2];
-      top[i + 3] = under[i + 3];
-      filled++;
-    }
-  }
-  return filled;
-}
-
-/**
- * How far the fill reaches past the no-data mask, in pixels. Measured on real
- * tiles: the edge of a swath is not a line but a band about eight rows deep
+ * How far a tile's confidence fades around its no-data, in pixels. Measured
+ * on real tiles: a swath edge is not a line but a band about eight rows deep
  * where the no-data fraction climbs from 0 to 1, and the pixels in between are
  * JPEG ringing — 9 to 40 on the brightest channel, too bright for the mask and
- * too dark to be cloud. Copied through as they were, they drew as a ring of
- * dark dashes along 70°S. Six pixels covers the band and keeps the blend
- * inside a JPEG block's worth of real imagery.
+ * too dark to be cloud.
  */
 export const FEATHER_PX = 6;
+/** A pixel this dark within FEATHER_PX of no-data is ringing, and joins the mask. Real night ocean is 40. */
+export const RINGING_MAX = 48;
 
-/**
- * fillNoData with a soft edge. The mask is the no-data pixels of `top`; a
- * pixel d steps from the mask (Chebyshev, d ≤ radius) takes 1 − d/(radius+1)
- * of `under`, so the seam is a gradient rather than a step and the ringing
- * beside it is mostly `under`. Radius 0 is fillNoData. Returns the mask count.
- */
-export function fillAndFeather(
-  top: Uint8ClampedArray, under: Uint8ClampedArray, width: number, height: number, radius = FEATHER_PX, max = NO_DATA_MAX,
-): number {
-  if (top.length !== under.length) throw new Error(`fillAndFeather: ${top.length} vs ${under.length} bytes`);
-  if (top.length !== width * height * 4) throw new Error(`fillAndFeather: ${width}×${height} is not ${top.length / 4} pixels`);
+/** Chebyshev distance from the set pixels of `mask`, up to `radius`; 255 beyond. */
+function distanceFrom(mask: Uint8Array, width: number, height: number, radius: number): Uint8Array {
   const dist = new Uint8Array(width * height).fill(255);
   let frontier: number[] = [];
-  let masked = 0;
-  for (let p = 0; p < width * height; p++) {
-    const i = p * 4;
-    if (top[i] <= max && top[i + 1] <= max && top[i + 2] <= max) { dist[p] = 0; frontier.push(p); masked++; }
-  }
+  for (let p = 0; p < mask.length; p++) if (mask[p]) { dist[p] = 0; frontier.push(p); }
   for (let d = 1; d <= radius && frontier.length; d++) {
     const next: number[] = [];
     for (const p of frontier) {
@@ -181,49 +148,77 @@ export function fillAndFeather(
     }
     frontier = next;
   }
-  for (let p = 0; p < width * height; p++) {
-    const d = dist[p];
-    if (d === 255) continue;
-    const i = p * 4;
-    if (d === 0) { top[i] = under[i]; top[i + 1] = under[i + 1]; top[i + 2] = under[i + 2]; top[i + 3] = under[i + 3]; continue; }
-    const t = 1 - d / (radius + 1);
-    for (let c = 0; c < 4; c++) top[i + c] = Math.round(top[i + c] + t * (under[i + c] - top[i + c]));
-  }
-  return masked;
+  return dist;
 }
 
 /**
- * Rows faded to transparent at a pole edge of the tile pyramid. Mercator
- * stops at 85.05°, and MapLibre's globe paints the cap beyond it in the
- * colour of the tile's last row — with the infrared filling that row, a flat
- * white disc over the pole. Fading the edge to nothing makes the cap the
- * basemap instead. 16 of 256 rows: about 1.5° at the zooms the globe is
- * looked at, invisible at the seam and enough to reach zero alpha.
+ * How much to believe each pixel of a tile: 0 on its no-data, rising to 1
+ * FEATHER_PX away, 1 everywhere else. The no-data mask is the black pixels
+ * plus any ringing-dark pixel within FEATHER_PX of one, so the band along a
+ * swath edge counts as missing rather than as very dark cloud. This is what
+ * the composite blends by — a tile is never blended *toward* another tile's
+ * hole, which is what an earlier fill-then-feather did: it pulled the bright
+ * pixels beside the 70°S seam toward yesterday's black there, and the
+ * infrared fill afterwards only half recovered them, leaving a dark ring.
  */
-export const POLE_FADE_ROWS = 16;
-
-/** Fades the top or bottom `rows` of a tile to transparent, in place. */
-export function fadePoleEdge(px: Uint8ClampedArray, width: number, height: number, edge: 'top' | 'bottom', rows = POLE_FADE_ROWS): void {
-  if (px.length !== width * height * 4) throw new Error(`fadePoleEdge: ${width}×${height} is not ${px.length / 4} pixels`);
-  const n = Math.min(rows, height);
-  for (let k = 0; k < n; k++) {
-    // k = 0 is the outermost row: alpha 0. k = n − 1 keeps 1/n of its alpha.
-    const t = k / n;
-    const r = edge === 'top' ? k : height - 1 - k;
-    for (let x = 0; x < width; x++) {
-      const i = (r * width + x) * 4 + 3;
-      px[i] = Math.round(px[i] * t);
-    }
+export function dataWeights(
+  px: Uint8ClampedArray, width: number, height: number, radius = FEATHER_PX, max = NO_DATA_MAX, ringing = RINGING_MAX,
+): Float32Array {
+  if (px.length !== width * height * 4) throw new Error(`dataWeights: ${width}×${height} is not ${px.length / 4} pixels`);
+  const n = width * height;
+  const hard = new Uint8Array(n);
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    if (px[i] <= max && px[i + 1] <= max && px[i + 2] <= max) hard[p] = 1;
   }
+  const near = distanceFrom(hard, width, height, radius);
+  const mask = new Uint8Array(n);
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    if (hard[p] || (near[p] !== 255 && px[i] <= ringing && px[i + 1] <= ringing && px[i + 2] <= ringing)) mask[p] = 1;
+  }
+  const dist = distanceFrom(mask, width, height, radius);
+  const w = new Float32Array(n);
+  for (let p = 0; p < n; p++) w[p] = dist[p] === 255 ? 1 : dist[p] / (radius + 1);
+  return w;
 }
 
-/** How many pixels are still no-data — what decides whether the infrared is fetched at all. */
-export function countNoData(px: Uint8ClampedArray, max = NO_DATA_MAX): number {
+/** Pixels no layer fully covers — what decides whether the infrared is fetched at all. */
+export function uncovered(weights: Float32Array[], pixels: number): number {
   let n = 0;
-  for (let i = 0; i < px.length; i += 4) {
-    if (px[i] <= max && px[i + 1] <= max && px[i + 2] <= max) n++;
+  for (let p = 0; p < pixels; p++) {
+    let rem = 1;
+    for (const w of weights) rem *= 1 - w[p];
+    if (rem > 1e-3) n++;
   }
   return n;
+}
+
+/**
+ * Front-to-back composite: each layer contributes its weight of whatever the
+ * layers above left, colours normalised so a half-covered pixel is the right
+ * colour at half alpha rather than half black. Alpha is the coverage, so a
+ * pixel no layer has is transparent.
+ */
+export function compositeWeighted(layers: Uint8ClampedArray[], weights: Float32Array[], width: number, height: number): Uint8ClampedArray {
+  const n = width * height;
+  if (layers.length !== weights.length) throw new Error(`compositeWeighted: ${layers.length} layers, ${weights.length} weights`);
+  const out = new Uint8ClampedArray(n * 4);
+  for (let p = 0; p < n; p++) {
+    let r = 0, g = 0, b = 0, a = 0, total = 0, rem = 1;
+    for (let k = 0; k < layers.length && rem > 0; k++) {
+      const share = weights[k][p] * rem;
+      if (share > 0) {
+        const i = p * 4, L = layers[k];
+        r += L[i] * share; g += L[i + 1] * share; b += L[i + 2] * share; a += L[i + 3] * share;
+        total += share;
+      }
+      rem *= 1 - weights[k][p];
+    }
+    const o = p * 4;
+    if (total > 0) { out[o] = r / total; out[o + 1] = g / total; out[o + 2] = b / total; out[o + 3] = a; }
+  }
+  return out;
 }
 
 /**
@@ -304,31 +299,30 @@ export async function loadCompositeTile(url: string, signal?: AbortSignal): Prom
     return g.getImageData(0, 0, size, size);
   };
 
-  /* A transparent tile when neither day has it; the fills below treat
-     transparent black as no-data like any other. */
-  let out = g.createImageData(size, size);
-  if (choice.mode === 'composite') {
-    out = await pixelsOf(choice.top);
-    fillAndFeather(out.data, (await pixelsOf(choice.under)).data, size, size);
-  } else if (choice.mode === 'single') {
-    out = await pixelsOf(choice.tile);
-  }
+  /* Front to back: today, yesterday, then the night infrared — each weighted
+     by its own confidence, so no layer is ever blended toward another's hole.
+     With neither day present the list starts empty and the tile is whatever
+     the infrared has, or transparent. */
+  const layers: Uint8ClampedArray[] = [];
+  if (choice.mode === 'composite') layers.push((await pixelsOf(choice.top)).data, (await pixelsOf(choice.under)).data);
+  else if (choice.mode === 'single') layers.push((await pixelsOf(choice.tile)).data);
+  const weights = layers.map(l => dataWeights(l, size, size));
 
-  /* Third fill: the night infrared, fetched only for a tile that still has
-     holes — most of the world never gets here. Its failure is not reported:
-     it is a fallback for a fallback, and the tile is no worse without it. */
-  if (countNoData(out.data) > 0) {
+  /* The infrared is fetched only for a tile the days leave holes in — most of
+     the world never gets here. Its failure is not reported: it is a fallback
+     for a fallback, and the tile is no worse without it. */
+  if (uncovered(weights, size * size) > 0) {
     const ir = await fetchDay(req.under, INFRARED_LAYER);
     if ('tile' in ir && ir.tile) {
-      const irPixels = await pixelsOf(ir.tile);
-      paintInfrared(irPixels.data);
-      fillAndFeather(out.data, irPixels.data, size, size);
+      const irPixels = (await pixelsOf(ir.tile)).data;
+      paintInfrared(irPixels);
+      layers.push(irPixels);
+      weights.push(dataWeights(irPixels, size, size));
     }
   }
 
-  if (req.y === 0) fadePoleEdge(out.data, size, size, 'top');
-  if (req.y === 2 ** req.z - 1) fadePoleEdge(out.data, size, size, 'bottom');
-
+  const out = g.createImageData(size, size);
+  out.data.set(compositeWeighted(layers, weights, size, size));
   g.putImageData(out, 0, 0);
   const png = await canvas.convertToBlob({ type: 'image/png' });
   return png.arrayBuffer();

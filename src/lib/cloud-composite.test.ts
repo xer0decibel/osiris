@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cloudDates, compositeTemplate, parseCompositeUrl, gibsTileUrl, fillNoData, fillAndFeather, fadePoleEdge, chooseTiles, countNoData, paintInfrared,
-  NO_DATA_MAX, CLOUD_PROTOCOL, INFRARED_LAYER, CLOUD_WHITE, OCEAN_NAVY, IR_WARM_K, IR_COLD_K,
+  cloudDates, compositeTemplate, parseCompositeUrl, gibsTileUrl, chooseTiles, paintInfrared,
+  dataWeights, compositeWeighted, uncovered,
+  NO_DATA_MAX, RINGING_MAX, CLOUD_PROTOCOL, INFRARED_LAYER, CLOUD_WHITE, OCEAN_NAVY, IR_WARM_K, IR_COLD_K,
 } from './cloud-composite';
 import { temperatureOf, rampColour, BT_MIN_K, BT_MAX_K, BT_ENTRIES } from './gibs-bt-ramp';
 
@@ -58,89 +59,10 @@ describe('paintInfrared', () => {
     }
   });
 
-  it('never produces no-data, so a later fill leaves it alone', () => {
+  it('never produces no-data, so it is believed everywhere', () => {
     const px = new Uint8ClampedArray([...rampColour(0), 255, ...rampColour(BT_ENTRIES - 1), 255]);
     paintInfrared(px);
-    expect(countNoData(px)).toBe(0);
-  });
-});
-
-describe('fillAndFeather', () => {
-  /** A 5×1 strip: pixel 0 is no-data, the rest are white; underneath is all 100. */
-  const strip = () => ({
-    top: new Uint8ClampedArray([0, 0, 0, 255, 250, 250, 250, 255, 250, 250, 250, 255, 250, 250, 250, 255, 250, 250, 250, 255]),
-    under: new Uint8ClampedArray(20).fill(100),
-  });
-
-  it('copies the mask and blends outward in steps, leaving the far side alone', () => {
-    const { top, under } = strip();
-    expect(fillAndFeather(top, under, 5, 1, 2)).toBe(1);
-    const grey = (i: number) => top[i * 4];
-    expect(grey(0)).toBe(100);                       // d=0: under
-    expect(grey(1)).toBe(Math.round(250 + (2 / 3) * (100 - 250))); // d=1: two thirds under
-    expect(grey(2)).toBe(Math.round(250 + (1 / 3) * (100 - 250))); // d=2: one third
-    expect(grey(3)).toBe(250);                       // beyond the radius
-    expect(grey(4)).toBe(250);
-  });
-
-  it('with radius 0 is fillNoData', () => {
-    const a = strip(), b = strip();
-    fillAndFeather(a.top, a.under, 5, 1, 0);
-    fillNoData(b.top, b.under);
-    expect(Array.from(a.top)).toEqual(Array.from(b.top));
-  });
-
-  it('pulls the ringing beside a seam toward the fill', () => {
-    // no-data, then a JPEG-ringing pixel of 30, then real cloud
-    const top = new Uint8ClampedArray([0, 0, 0, 255, 30, 30, 30, 255, 250, 250, 250, 255]);
-    const under = new Uint8ClampedArray(12).fill(230);
-    fillAndFeather(top, under, 3, 1, 1);
-    expect(top[4]).toBe(Math.round(30 + 0.5 * (230 - 30)));
-    expect(top[8]).toBe(250);
-  });
-
-  it('does nothing to a tile with no holes', () => {
-    const top = new Uint8ClampedArray([250, 250, 250, 255, 24, 28, 40, 255]);
-    const before = Array.from(top);
-    expect(fillAndFeather(top, new Uint8ClampedArray(8).fill(9), 2, 1, 3)).toBe(0);
-    expect(Array.from(top)).toEqual(before);
-  });
-
-  it('refuses a size that does not match the buffers', () => {
-    expect(() => fillAndFeather(new Uint8ClampedArray(8), new Uint8ClampedArray(8), 3, 1)).toThrow(/3×1/);
-  });
-});
-
-describe('fadePoleEdge', () => {
-  /** 1 pixel wide, 6 rows, all opaque white. */
-  const column = () => { const px = new Uint8ClampedArray(24).fill(255); return px; };
-  const alphas = (px: Uint8ClampedArray) => Array.from({ length: 6 }, (_, r) => px[r * 4 + 3]);
-
-  it('fades the bottom rows to nothing, outermost first, and leaves colour alone', () => {
-    const px = column();
-    fadePoleEdge(px, 1, 6, 'bottom', 4);
-    expect(alphas(px)).toEqual([255, 255, 191, 128, 64, 0]);
-    expect(px[5 * 4]).toBe(255);
-  });
-
-  it('fades the top rows the same way', () => {
-    const px = column();
-    fadePoleEdge(px, 1, 6, 'top', 4);
-    expect(alphas(px)).toEqual([0, 64, 128, 191, 255, 255]);
-  });
-
-  it('never fades more rows than the tile has', () => {
-    const px = column();
-    fadePoleEdge(px, 1, 6, 'bottom', 40);
-    expect(alphas(px)[0]).toBe(213);
-    expect(alphas(px)[5]).toBe(0);
-  });
-});
-
-describe('countNoData', () => {
-  it('counts black and transparent pixels, not dark imagery', () => {
-    const px = new Uint8ClampedArray([0, 0, 0, 0, 0, 0, 0, 255, 8, 8, 8, 255, 9, 0, 0, 255, 24, 28, 40, 255]);
-    expect(countNoData(px)).toBe(3);
+    expect(Array.from(dataWeights(px, 2, 1))).toEqual([1, 1]);
   });
 });
 
@@ -226,51 +148,64 @@ describe('composite URL', () => {
   });
 });
 
-/** Four pixels: black, brightest channel at the threshold, one over it, and white. */
-function tile(): { top: Uint8ClampedArray; under: Uint8ClampedArray } {
-  const m = NO_DATA_MAX;
-  const top = new Uint8ClampedArray([
-    0, 0, 0, 255,
-    m, 0, 0, 255,
-    m + 1, 0, 0, 255,
-    255, 255, 255, 255,
-  ]);
-  const under = new Uint8ClampedArray([
-    10, 20, 30, 255,
-    40, 50, 60, 255,
-    70, 80, 90, 255,
-    100, 110, 120, 255,
-  ]);
-  return { top, under };
-}
+/** A 1-pixel-high strip from brightest-channel values, opaque. */
+const strip = (...maxes: number[]) => new Uint8ClampedArray(maxes.flatMap(m => [m, m, m, 255]));
 
-describe('fillNoData', () => {
-  it('fills black and at-threshold pixels from underneath, keeps the rest', () => {
-    const { top, under } = tile();
-    expect(fillNoData(top, under)).toBe(2);
-    expect(Array.from(top)).toEqual([
-      10, 20, 30, 255,
-      40, 50, 60, 255,
-      NO_DATA_MAX + 1, 0, 0, 255,
-      255, 255, 255, 255,
-    ]);
+/**
+ * Confidence is what the whole composite blends by, so the mask has to catch
+ * the ringing beside a swath edge — and only there. Dark night ocean far from
+ * any hole is imagery.
+ */
+describe('dataWeights', () => {
+  it('is 0 on no-data, ramps out over the radius, and 1 beyond', () => {
+    const w = dataWeights(strip(0, 250, 250, 250, 250), 5, 1, 2);
+    expect(Array.from(w).map(v => +v.toFixed(3))).toEqual([0, 0.333, 0.667, 1, 1]);
   });
 
-  it('reports zero when today already covers the tile', () => {
-    const top = new Uint8ClampedArray([200, 200, 200, 255, 30, 60, 90, 255]);
-    const under = new Uint8ClampedArray(8);
-    expect(fillNoData(top, under)).toBe(0);
-    expect(Array.from(top)).toEqual([200, 200, 200, 255, 30, 60, 90, 255]);
+  it('treats a ringing-dark pixel beside no-data as no-data too', () => {
+    const w = dataWeights(strip(0, RINGING_MAX, 250, 250, 250, 250), 6, 1, 2);
+    expect(Array.from(w).map(v => +v.toFixed(3))).toEqual([0, 0, 0.333, 0.667, 1, 1]);
   });
 
-  it('reports every pixel when today is entirely black, which is the Americas before their pass', () => {
-    const top = new Uint8ClampedArray(16);
-    const under = new Uint8ClampedArray(16).fill(90);
-    expect(fillNoData(top, under)).toBe(4);
-    expect(Array.from(top)).toEqual(Array(16).fill(90));
+  it('believes a dark pixel that is nowhere near a hole', () => {
+    expect(Array.from(dataWeights(strip(250, 250, 250, RINGING_MAX, NO_DATA_MAX + 1), 5, 1, 2))).toEqual([1, 1, 1, 1, 1]);
   });
 
-  it('refuses tiles of different sizes rather than reading past the end', () => {
-    expect(() => fillNoData(new Uint8ClampedArray(8), new Uint8ClampedArray(4))).toThrow(/8 vs 4/);
+  it('treats transparent black as no-data', () => {
+    const px = new Uint8ClampedArray(8); // two transparent pixels
+    expect(Array.from(dataWeights(px, 2, 1))).toEqual([0, 0]);
+  });
+
+  it('refuses a size that does not match the buffer', () => {
+    expect(() => dataWeights(new Uint8ClampedArray(8), 3, 1)).toThrow(/3×1/);
+  });
+});
+
+describe('compositeWeighted', () => {
+  it('lets each layer take its share of what the layers above left', () => {
+    const top = strip(250, 250, 250);
+    const under = strip(100, 100, 100);
+    const out = compositeWeighted([top, under], [new Float32Array([0, 0.5, 1]), new Float32Array([1, 1, 1])], 3, 1);
+    expect(Array.from(out)).toEqual([100, 100, 100, 255, 175, 175, 175, 255, 250, 250, 250, 255]);
+  });
+
+  it('keeps the colour and lowers the alpha where coverage runs out, rather than darkening', () => {
+    const out = compositeWeighted([strip(200, 200)], [new Float32Array([0.5, 0])], 2, 1);
+    expect(Array.from(out)).toEqual([200, 200, 200, 128, 0, 0, 0, 0]);
+  });
+
+  it('is transparent with no layers at all', () => {
+    expect(Array.from(compositeWeighted([], [], 2, 1))).toEqual(Array(8).fill(0));
+  });
+
+  it('refuses mismatched layers and weights', () => {
+    expect(() => compositeWeighted([strip(1)], [], 1, 1)).toThrow(/1 layers, 0 weights/);
+  });
+});
+
+describe('uncovered', () => {
+  it('counts the pixels no layer fully covers', () => {
+    expect(uncovered([new Float32Array([1, 0.5, 0]), new Float32Array([1, 1, 0])], 3)).toBe(1);
+    expect(uncovered([], 3)).toBe(3);
   });
 });
