@@ -45,15 +45,18 @@ export const CLOUD_PROTOCOL = 'osiris-clouds';
  * next to a photograph, so each pixel is taken back to kelvin through the
  * published ramp and repainted between the two colours the true colour tiles
  * actually have — measured as the median of their ocean and cloud pixels —
- * with the layer's own opacity doing the rest. 276 K is water just above
- * freezing, which is the open Southern Ocean; 236 K is a cloud top, and also
- * the Antarctic plateau at night, which the true colour would show as white
- * ice anyway.
+ * with the layer's own opacity doing the rest. 274 K is water just above
+ * freezing, which is the open Southern Ocean; 252 K and colder is white.
+ * That white point was measured, not chosen: just north of the 70°S seam the
+ * photograph is almost all sea ice and cloud (median brightness 244/255),
+ * and just south of it the infrared reads 228–251 K, so anything colder than
+ * 252 K has to come out as white or the seam shows as a step. A first cut
+ * with white at 236 K painted 245 K as mid grey and the step was plain.
  */
 export const CLOUD_WHITE: [number, number, number] = [230, 230, 234];
 export const OCEAN_NAVY: [number, number, number] = [24, 28, 40];
-export const IR_WARM_K = 276;
-export const IR_COLD_K = 236;
+export const IR_WARM_K = 274;
+export const IR_COLD_K = 252;
 /** GIBS Level9 tiles are 256px; the source in OsirisMap declares the size and the z9 ceiling. */
 export const CLOUD_TILE_SIZE = 256;
 

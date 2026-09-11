@@ -433,10 +433,14 @@ ramp (`lib/gibs-bt-ramp.ts`, 255 entries 180–340 K, taken from the
 published colormap with a nearest-colour lookup), which read as a purple
 wash next to a photograph; each pixel goes back to kelvin and is repainted
 between the true colour's own ocean navy (24,28,40) and cloud white
-(230,230,234), both measured as medians of real tiles: 276 K and warmer is
-navy, 236 K and colder is white. Cold ice sheet comes out white, which is
-what the photograph would show too. Verified: the cloud field runs across
-the 70°S seam with a faint tonal step, no script errors. If anyone wants the
+(230,230,234), both measured as medians of real tiles: 274 K and warmer is
+navy, 252 K and colder is white. The white point was measured at the seam:
+just north of 70°S the photograph is nearly all sea ice and cloud (median
+brightness 244/255) and just south the infrared reads 228–251 K, so a first
+cut with white at 236 K painted 245 K as mid grey and the step was plain in
+the globe view. Cold ice sheet comes out white, which is what the photograph
+would show too. Verified: the cloud field runs across the 70°S seam, no
+script errors. If anyone wants the
 infrared everywhere at night rather than only in the polar hole, the
 mechanism is the same; the daily composites have no night side to fill, so
 it would need a different top layer.
