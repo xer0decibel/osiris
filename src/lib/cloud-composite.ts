@@ -192,6 +192,31 @@ export function fillAndFeather(
   return masked;
 }
 
+/**
+ * Rows faded to transparent at a pole edge of the tile pyramid. Mercator
+ * stops at 85.05°, and MapLibre's globe paints the cap beyond it in the
+ * colour of the tile's last row — with the infrared filling that row, a flat
+ * white disc over the pole. Fading the edge to nothing makes the cap the
+ * basemap instead. 16 of 256 rows: about 1.5° at the zooms the globe is
+ * looked at, invisible at the seam and enough to reach zero alpha.
+ */
+export const POLE_FADE_ROWS = 16;
+
+/** Fades the top or bottom `rows` of a tile to transparent, in place. */
+export function fadePoleEdge(px: Uint8ClampedArray, width: number, height: number, edge: 'top' | 'bottom', rows = POLE_FADE_ROWS): void {
+  if (px.length !== width * height * 4) throw new Error(`fadePoleEdge: ${width}×${height} is not ${px.length / 4} pixels`);
+  const n = Math.min(rows, height);
+  for (let k = 0; k < n; k++) {
+    // k = 0 is the outermost row: alpha 0. k = n − 1 keeps 1/n of its alpha.
+    const t = k / n;
+    const r = edge === 'top' ? k : height - 1 - k;
+    for (let x = 0; x < width; x++) {
+      const i = (r * width + x) * 4 + 3;
+      px[i] = Math.round(px[i] * t);
+    }
+  }
+}
+
 /** How many pixels are still no-data — what decides whether the infrared is fetched at all. */
 export function countNoData(px: Uint8ClampedArray, max = NO_DATA_MAX): number {
   let n = 0;
@@ -300,6 +325,9 @@ export async function loadCompositeTile(url: string, signal?: AbortSignal): Prom
       fillAndFeather(out.data, irPixels.data, size, size);
     }
   }
+
+  if (req.y === 0) fadePoleEdge(out.data, size, size, 'top');
+  if (req.y === 2 ** req.z - 1) fadePoleEdge(out.data, size, size, 'bottom');
 
   g.putImageData(out, 0, 0);
   const png = await canvas.convertToBlob({ type: 'image/png' });

@@ -451,7 +451,13 @@ fill in the loader: the mask is dilated six pixels (Chebyshev, BFS) and a
 pixel d steps out takes 1 − d/7 of the fill, so the ringing is mostly
 fill and the seam is a gradient. Used for both the yesterday fill and the
 infrared fill, so today's swath edges over the Americas feather too.
-Verified at z3.4 over the Peninsula: a soft grey band, no dashes. If anyone wants the
+Verified at z3.4 over the Peninsula: a soft grey band, no dashes.
+
+**And the pole was a flat white disc.** Mercator stops at 85.05° and
+MapLibre's globe paints the cap beyond it in the colour of the tile's last
+row; with the infrared filling that row, the cap went ice-white. The loader
+now fades the outermost 16 rows of a pole-edge tile (y = 0 or y = 2^z − 1)
+to transparent, so the cap is the basemap. Both poles, for consistency. If anyone wants the
 infrared everywhere at night rather than only in the polar hole, the
 mechanism is the same; the daily composites have no night side to fill, so
 it would need a different top layer.

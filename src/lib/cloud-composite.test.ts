@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  cloudDates, compositeTemplate, parseCompositeUrl, gibsTileUrl, fillNoData, fillAndFeather, chooseTiles, countNoData, paintInfrared,
+  cloudDates, compositeTemplate, parseCompositeUrl, gibsTileUrl, fillNoData, fillAndFeather, fadePoleEdge, chooseTiles, countNoData, paintInfrared,
   NO_DATA_MAX, CLOUD_PROTOCOL, INFRARED_LAYER, CLOUD_WHITE, OCEAN_NAVY, IR_WARM_K, IR_COLD_K,
 } from './cloud-composite';
 import { temperatureOf, rampColour, BT_MIN_K, BT_MAX_K, BT_ENTRIES } from './gibs-bt-ramp';
@@ -108,6 +108,32 @@ describe('fillAndFeather', () => {
 
   it('refuses a size that does not match the buffers', () => {
     expect(() => fillAndFeather(new Uint8ClampedArray(8), new Uint8ClampedArray(8), 3, 1)).toThrow(/3×1/);
+  });
+});
+
+describe('fadePoleEdge', () => {
+  /** 1 pixel wide, 6 rows, all opaque white. */
+  const column = () => { const px = new Uint8ClampedArray(24).fill(255); return px; };
+  const alphas = (px: Uint8ClampedArray) => Array.from({ length: 6 }, (_, r) => px[r * 4 + 3]);
+
+  it('fades the bottom rows to nothing, outermost first, and leaves colour alone', () => {
+    const px = column();
+    fadePoleEdge(px, 1, 6, 'bottom', 4);
+    expect(alphas(px)).toEqual([255, 255, 191, 128, 64, 0]);
+    expect(px[5 * 4]).toBe(255);
+  });
+
+  it('fades the top rows the same way', () => {
+    const px = column();
+    fadePoleEdge(px, 1, 6, 'top', 4);
+    expect(alphas(px)).toEqual([0, 64, 128, 191, 255, 255]);
+  });
+
+  it('never fades more rows than the tile has', () => {
+    const px = column();
+    fadePoleEdge(px, 1, 6, 'bottom', 40);
+    expect(alphas(px)[0]).toBe(213);
+    expect(alphas(px)[5]).toBe(0);
   });
 });
 
